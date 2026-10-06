@@ -1,4 +1,4 @@
-"""Прави папка demo_files/ с чисти и "заразени" файлове (само ФАЛШИВ ключ). Пуска се от корена: python tests/make_demo.py"""
+"""Creates demo_files/ folder with clean and "infected" files (only FAKE keys). Run from root: python tests/make_demo.py"""
 import os
 import shutil
 import subprocess
@@ -52,21 +52,21 @@ open(D + "08_report_infected.pdf", "wb").write(pdf(True))
 
 a = np.array(Image.open(D + "01_logo_clean.png").convert("RGB")).astype(int)
 b = np.array(Image.open(D + "02_logo_infected_lsb.png").convert("RGB")).astype(int)
-open(D + "ПРОЧЕТИ.txt", "w", encoding="utf-8").write(f"""ТЕСТОВИ ФАЙЛОВЕ ЗА PURRGUARD (всички ключове са ФАЛШИВИ)
+open(D + "README.txt", "w", encoding="utf-8").write(f"""TEST FILES FOR PURRGUARD (all keys are FAKE)
 
-Чисти: 01, 05, 07, 09, 11        Заразени: 02, 03, 04, 06, 08, 10, 12
+Clean: 01, 05, 07, 09, 11        Infected: 02, 03, 04, 06, 08, 10, 12
 
-01 vs 02  PNG със скрит текст в най-малко значимите битове. Най-голямата разлика в пиксел е {int(abs(a - b).max())} от 255,
-          т.е. окото не вижда нищо. Хваща се само със статистика.
-03        PNG с данни, залепени след края на файла (изглежда нормално във всеки преглед на снимки).
-04        PNG със скрит текст в служебен чънк.
-05 vs 06  JPEG със залепени данни след края.
-07 vs 08  PDF: заразеният има данни след %%EOF, вграден файл и скрипт при отваряне.
-09 vs 10  SQL: заразеният изглежда еднакво, но съдържа стотици невидими Unicode символи.
-11 vs 12  WAV: заразеният има нестандартен чънк с данни.
+01 vs 02  PNG with hidden text in the least significant bits. The maximum pixel difference is {int(abs(a - b).max())} out of 255,
+          i.e. the eye sees nothing. It is caught only with statistics.
+03        PNG with data appended after the end of the file (looks normal in any image viewer).
+04        PNG with hidden text in a metadata chunk.
+05 vs 06  JPEG with data appended after the end.
+07 vs 08  PDF: the infected one has data after %%EOF, embedded file, and script on open.
+09 vs 10  SQL: the infected one looks identical but contains hundreds of invisible Unicode characters.
+11 vs 12  WAV: the infected one has a non-standard chunk with data.
 
-Как да докажеш на журито, че файлът наистина е дефектен:
-  python main.py explain demo_files/*     # какво точно е открито, къде, и как да го провериш със strings/xxd/grep
-Сравни чистия и заразения файл: същият вид, различен размер или структура.
+How to prove to the jury that the file is truly infected:
+  python main.py explain demo_files/*     # what exactly is detected, where, and how to verify it with strings/xxd/grep
+Compare the clean and infected file: same kind, different size or structure.
 """)
-print("Готово:", sorted(os.listdir(D)))
+print("Done:", sorted(os.listdir(D)))

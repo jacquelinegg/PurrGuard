@@ -90,22 +90,22 @@ def _zw_decode(data):
 
 
 def _streams(path, data):
-    yield "в чист вид", data
+    yield "in plaintext", data
     zw = _zw_decode(data)
     if zw:
-        yield "скрито в невидими Unicode символи", zw
+        yield "hidden in invisible Unicode characters", zw
     try:
         if data.startswith(PNG_SIG):
             arr = np.array(Image.open(path).convert("RGB"), dtype=np.uint8)
             if arr.size < 60_000_000:
                 for c, n in enumerate("RGB"):
-                    yield f"скрито в LSB на PNG канал {n}", np.packbits(arr[:, :, c].ravel() & 1).tobytes()
-                yield "скрито в LSB на PNG (RGB последователно)", np.packbits(arr.ravel() & 1).tobytes()
+                    yield f"hidden in LSB of PNG channel {n}", np.packbits(arr[:, :, c].ravel() & 1).tobytes()
+                yield "hidden in LSB of PNG (RGB sequential)", np.packbits(arr.ravel() & 1).tobytes()
         elif data[:4] == b"RIFF":
             with wave.open(path, "rb") as w:
                 if w.getsampwidth() == 2:
                     s = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")
-                    yield "скрито в LSB на WAV семпли", np.packbits((s & 1).astype(np.uint8)).tobytes()
+                    yield "hidden in LSB of WAV samples", np.packbits((s & 1).astype(np.uint8)).tobytes()
     except Exception:
         pass
 
@@ -116,7 +116,7 @@ def scan(path, registry, repo_path=None):
         return []
     rp = (repo_path or path).lstrip("./") if (repo_path or path).startswith("./") else (repo_path or path)
     if any(t["decoy"] == rp for t in tokens.values()):
-        return []  # самата примамка си стои на мястото
+        return []  # the decoy stays in place
     if os.path.getsize(path) > 50_000_000:
         return []
     data = open(path, "rb").read()
@@ -128,7 +128,7 @@ def scan(path, registry, repo_path=None):
                 if t and (t["id"], where) not in seen:
                     seen.add((t["id"], where))
                     f = finding("honeytoken", "CRITICAL",
-                                f"ПРИМАМКА {t['id']} ({t['kind']}, от {t['decoy']}) е открита {where} - сигурно доказателство за опит за изнасяне")
+                                f"DECOY {t['id']} ({t['kind']}, from {t['decoy']}) found {where} - strong evidence of exfiltration attempt")
                     f["honeytoken"] = t["id"]
                     out.append(f)
     return out

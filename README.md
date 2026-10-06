@@ -14,97 +14,97 @@ Two halves of one product for the agent era:
 > It does not replace Secret Manager/OIDC. With the `gcp-kms` provider the KEK never leaves Google Cloud KMS.
 > Public repo ⇒ ciphertext is public. That's why the KEK is in a masked+protected CI variable (or KMS), and the bundle has a TTL and rotates.
 
-## Архитектура
+## Architecture
 ```mermaid
 flowchart LR
-  subgraph Dev["Разработчик (има KEK)"]
-    S[stegoops seal] -->|AES-GCM + envelope| C[(logo.png с шифроблок)]
-    S --> M[.stegoops/manifest.json<br/>SHA-256, имена, срок]
+  subgraph Dev["Developer (has KEK)"]
+    S[stegoops seal] -->|AES-GCM + envelope| C[(logo.png with encrypted block)]
+    S --> M[.stegoops/manifest.json<br/>SHA-256, names, expiry]
   end
-  C & M -->|MR| P[PurrGuard<br/>carrier pin + stego анализ]
+  C & M -->|MR| P[PurrGuard<br/>carrier pin + stego analysis]
   P -->|findings| F1[Duo flow 1<br/>MR Guardian - supervised]
-  F1 -->|approve| FIX[fix MR + план за ротация]
+  F1 -->|approve| FIX[fix MR + rotation plan]
   C -->|build-app| R[(GitLab Container Registry)]
-  R -->|слоеве в паметта| D[deploy-staging<br/>stegoops exec, KEK само тук]
-  D -->|тайни само в env на процеса| APP[приложение]
-  D -->|leak_audit.json: само броячи| F2[Duo flow 2<br/>Deploy Sentinel - hands-off]
-  F2 --> ISS[резултат в issue]
+  R -->|in memory layers| D[deploy-staging<br/>stegoops exec, KEK only here]
+  D -->|secrets only in process env| APP[application]
+  D -->|leak_audit.json: counters only| F2[Duo flow 2<br/>Deploy Sentinel - hands-off]
+  F2 --> ISS[result in issue]
 ```
 
-## Hands-off цикъл: изтичане на срок → ротация → деплой → проверка (без човек)
-Тайните имат срок (по подразбиране 30 дни). Цикълът се върти сам, а **ключът остава само в CI**:
+## Hands-off cycle: expiry → rotation → deploy → check (no human)
+Secrets have a TTL (default 30 days). The cycle runs by itself, and **the key stays only in CI**:
 ```mermaid
 flowchart LR
-  W[expiry-watch<br/>без ключ] -->|issue stegoops::rotation| R
-  R[rotate-secrets<br/>ЕДИНСТВЕНАТА задача с KEK] -->|нов носител + манифест| MR[MR stegoops/rotate-*<br/>auto-merge]
-  MR --> G[rotation-guard + PurrGuard + verify + тестове]
-  G -->|зелен pipeline| M[merge в main]
+  W[expiry-watch<br/>no key] -->|issue stegoops::rotation| R
+  R[rotate-secrets<br/>ONLY job with KEK] -->|new carrier + manifest| MR[MR stegoops/rotate-*<br/>auto-merge]
+  MR --> G[rotation-guard + PurrGuard + verify + tests]
+  G -->|green pipeline| M[merge into main]
   M --> B[build-app -> deploy-staging -> deploy-cloudrun]
-  B -->|pipeline събитие| S[Duo flow 2: Deploy Sentinel]
-  S -->|одит leak_audit.json| I[резултат в issue / нов issue при изтичане]
+  B -->|pipeline event| S[Duo flow 2: Deploy Sentinel]
+  S -->|audit leak_audit.json| I[result in issue / new issue on leak]
 ```
-- **Агентите не вършат привилегирована работа.** Flow 2 *решава и отчита* (готовност, одит, issue); ротацията и сливането са детерминирани CI стъпки. Това е целта: AI оркестрира, но не държи ключа.
-- Защити около auto-merge: `rotation-guard` проваля pipeline-а, ако ротационният MR пипа нещо различно от носителите и манифеста; PurrGuard проверява подмяна на носител; без зелен pipeline няма merge (включи *Pipelines must succeed*).
-- Ръчно пускане: Build → Pipelines → Run pipeline на основния клон, или график (Schedules, напр. всеки ден).
+- **Agents do not perform privileged work.** Flow 2 *decides and reports* (readiness, audit, issue); rotation and merging are deterministic CI steps. That's the goal: AI orchestrates, but doesn't hold the key.
+- Controls around auto-merge: `rotation-guard` fails the pipeline if the rotation MR touches anything other than carriers and manifest; PurrGuard checks for carrier substitution; no green pipeline means no merge (enable *Pipelines must succeed*).
+- Manual run: Build → Pipelines → Run pipeline on the main branch, or schedule (Schedules, e.g. every day).
 
-## Допълнения за хакатона
-- **MCP сървър** (`python -m stegoops.mcp_server`, конфиг `.gitlab/duo/mcp.json`): само за четене - `stegoops_verify`, `stegoops_expiry`, `purrguard_scan`. Връща имена и срокове, никога стойности. Без външни зависимости.
-- **Google Cloud:** `deploy-cloudrun` (Artifact Registry + Secret Manager + Cloud Run) и `deploy/gcp_setup.sh` за еднократна подготовка. Виж `SETUP.md`.
-- **Резервен режим** `--fallback-local`: ако registry клиентът не успее, носителят се чете от checkout-а; SHA-256 пинът пак се проверява.
-- **Леки CI задачи:** `requirements.txt` е само ядрото; `anthropic`/Cloud Logging са в `requirements-extra.txt` и не се инсталират в CI.
+## Hackathon additions
+- **MCP server** (`python -m stegoops.mcp_server`, config `.gitlab/duo/mcp.json`): read-only - `stegoops_verify`, `stegoops_expiry`, `purrguard_scan`. Returns names and expiries, never values. No external dependencies.
+- **Google Cloud:** `deploy-cloudrun` (Artifact Registry + Secret Manager + Cloud Run) and `deploy/gcp_setup.sh` for one-time setup. See `SETUP.md`.
+- **Fallback mode** `--fallback-local`: if the registry client fails, the carrier is read from the checkout; SHA-256 pin is still verified.
+- **Lightweight CI jobs:** `requirements.txt` is just the core; `anthropic`/Cloud Logging are in `requirements-extra.txt` and are not installed in CI.
 
-## Покритие на DevSecOps етапите
-Plan (issue → flow 2) · Create (fix MR от агента) · Verify (тестове + pipeline проверка) · Package (image в Container Registry) · Secure (PurrGuard, honeytokens, carrier pinning) · Release (deploy-staging) · Configure (agent-config, KEK scoping, Secret Manager по избор) · Monitor (leak audit, Cloud Logging, Pages табло) · Govern (манифест, CODEOWNERS, срокове, одит следа).
+## DevSecOps stage coverage
+Plan (issue → flow 2) · Create (fix MR from agent) · Verify (tests + pipeline check) · Package (image in Container Registry) · Secure (PurrGuard, honeytokens, carrier pinning) · Release (deploy-staging) · Configure (agent-config, KEK scoping, Secret Manager optional) · Monitor (leak audit, Cloud Logging, Pages dashboard) · Govern (manifest, CODEOWNERS, expiries, audit trail).
 
-## Бърз старт (локално, без GitLab)
+## Quick start (locally, without GitLab)
 ```bash
 pip install -r requirements.txt
-python tests/test_purrguard.py && python tests/test_stegoops.py && python tests/test_autopilot.py   # пълни автоматични тестове
-python -m stegoops init-demo                 # прави лого, запечатва 2 ФАЛШИВИ тайни, печата STEGOOPS_KEK
-export STEGOOPS_KEK=...                      # от изхода по-горе
-python -m stegoops inspect --carrier app/assets/logo.png          # само имена и срок, никога стойности
+python tests/test_purrguard.py && python tests/test_stegoops.py && python tests/test_autopilot.py   # full automated tests
+python -m stegoops init-demo                 # creates logo, seals 2 FAKE secrets, prints STEGOOPS_KEK
+export STEGOOPS_KEK=...                      # from the output above
+python -m stegoops inspect --carrier app/assets/logo.png          # names and expiry only, never values
 python -m stegoops exec --carrier app/assets/logo.png --log-file deploy.log --report leak_audit.json -- python deploy/smoke.py
-python main.py                               # PurrGuard разпознава носителя като авторизиран
+python main.py                               # PurrGuard recognizes the carrier as authorized
 ```
-Ключови команди: `keygen` · `seal --carrier F --from-env NAME… | --json -` · `inspect` · `exec` · `rotate` · `verify` · `decoy`.
-Тайните не се подават през argv (вижда се в `ps`/историята): ползвай `--from-env` или `--json -` (stdin).
+Key commands: `keygen` · `seal --carrier F --from-env NAME… | --json -` · `inspect` · `exec` · `rotate` · `verify` · `decoy`.
+Secrets are not passed via argv (visible in `ps`/history): use `--from-env` or `--json -` (stdin).
 
-## Настройка
-Пълни стъпки (GitLab, променливи, flows, Google Cloud, график, демо): **[SETUP.md](SETUP.md)**.
+## Setup
+Full steps (GitLab, variables, flows, Google Cloud, schedule, demo): **[SETUP.md](SETUP.md)**.
 
-## Как PurrGuard и Stego-Ops не си пречат
-Файл от манифеста е легитимен само ако SHA-256 съвпада с манифеста от **доверена** версия (при MR - базовият комит, който MR не може да промени).
-`ok` → пропуска се LSB анализът · `resealed` (носител+манифест променени заедно) → MEDIUM, иска преглед, не блокира · `tampered` → HIGH в MR / CRITICAL иначе.
-Нов/подправен манифест в MR → MEDIUM преглед. Fixer-ът никога не „почиства" авторизиран носител.
+## How PurrGuard and Stego-Ops don't interfere with each other
+A manifest file is legitimate only if its SHA-256 matches the manifest from a **trusted** version (in an MR - the base commit that the MR cannot change).
+`ok` → LSB analysis is skipped · `resealed` (carrier+manifest changed together) → MEDIUM, needs review, does not block · `tampered` → HIGH in MR / CRITICAL otherwise.
+New/tampered manifest in MR → MEDIUM review. The fixer never "cleans" an authorized carrier.
 
-## Какво е измерено (честно)
-- Сурова детекция: с малък payload (напр. 2 тайни) χ² тестът на PurrGuard **не** засича носителя; с ~12 KB payload го засича (HIGH). Затова доверието е в SHA-256 пина, а не в „невидимост".
-- Промяна по пикселите: най-много 1/255 на канал. Sequential LSB четци (напр. zsteg) не намират нищо четимо - позициите са ключови.
-- Ротацията презаписва старите позиции със случаен шум, за да не остане старо шифротекст в картинката.
-- **Decoy носители:** `stegoops decoy` слага регистриран honeytoken с обикновен последователен LSB; ако някой го „разкодира" и стойността се появи другаде - CRITICAL без фалшива тревога.
+## What is measured (honestly)
+- Raw detection: with a small payload (e.g. 2 secrets) PurrGuard's χ² test **does not** detect the carrier; with ~12 KB payload it detects it (HIGH). That's why trust is in the SHA-256 pin, not "invisibility".
+- Pixel change: at most 1/255 per channel. Sequential LSB readers (e.g. zsteg) find nothing readable - the positions are key.
+- Rotation overwrites old positions with random noise so old ciphertext does not remain in the image.
+- **Decoy carriers:** `stegoops decoy` places a registered honeytoken with ordinary sequential LSB; if someone "decodes" it and the value appears elsewhere - CRITICAL without false alarm.
 
-## Честни ограничения
-- **Не е тествано** срещу реален GitLab, Container Registry, Duo Agent Platform, Cloud KMS и Cloud Run. Registry клиентът е тестван с фалшив регистър, а ротацията (issue/branch/commit/MR/auto-merge) - с фалшив GitLab API; YAML-ите на flows са проверени за структура и референции, но не са пускани в Duo (имената на инструментите и триггерите трябва да се потвърдят в твоята инстанция/версия - flow builder-ът валидира).
-- Дъщерният процес може да запише тайна във файл или да я прехвърли в друго кодиране; скруберът покрива суров/base64/hex/URL/JSON вид и редове на PEM, не всичко. `leak_audit.json` отчита остатъчни шаблони.
-- Който може да пусне код в deploy задачата, може да вземе тайните (както при всяка CI тайна). Защити: protected branch, environment scoping, CODEOWNERS, KMS.
-- Стеганографията е крехка: рекомпресия/преоразмеряване на PNG (CDN, оптимизатори) я разрушава. Верният файл се пази от SHA-256 пина.
-- В flow средата сканът обхваща всички проследявани файлове (няма `CI_MERGE_REQUEST_DIFF_BASE_SHA`); пълният MR режим е в CI задачата `purrguard-mr`.
-- Всички демо тайни са **ФАЛШИВИ**.
+## Honest limitations
+- **Not tested** against real GitLab, Container Registry, Duo Agent Platform, Cloud KMS, and Cloud Run. The registry client is tested with a fake registry, and rotation (issue/branch/commit/MR/auto-merge) is tested with a fake GitLab API; flow YAMLs are checked for structure and references, but not run in Duo (tool names and triggers must be confirmed in your instance/version - the flow builder validates).
+- The child process may write a secret to a file or transfer it to another encoding; the scrubber covers raw/base64/hex/URL/JSON forms and PEM lines, not everything. `leak_audit.json` accounts for residual patterns.
+- Whoever can push code to the deploy job can take the secrets (as with any CI secret). Protections: protected branch, environment scoping, CODEOWNERS, KMS.
+- Steganography is fragile: PNG recompression/resizing (CDN, optimizers) destroys it. The correct file is protected by the SHA-256 pin.
+- In the flow environment, the scan covers all tracked files (no `CI_MERGE_REQUEST_DIFF_BASE_SHA`); the full MR mode is in the CI job `purrguard-mr`.
+- All demo secrets are **FAKE**.
 
-## PurrGuard (оригиналният скенер)
+## PurrGuard (the original scanner)
 ```bash
-python main.py                  # скан (в CI - само файловете от MR)
-python main.py history          # скан на цялата git история
-python main.py report           # табло -> public/index.html
-python main.py explain demo_files/*     # доказателства + команди за независима проверка
-python main.py sanitize <файлове>       # изчиства скрито съдържание (използва се от flow след одобрение)
-python main.py honey init <gcp-проект>  # honeytokens
-python main.py allow <файл>             # SHA-256 за allowlist
+python main.py                  # scan (in CI - only MR files)
+python main.py history          # scan entire git history
+python main.py report           # dashboard -> public/index.html
+python main.py explain demo_files/*     # evidence + commands for independent verification
+python main.py sanitize <files>       # cleans hidden content (used by flow after approval)
+python main.py honey init <gcp-project>  # honeytokens
+python main.py allow <file>             # SHA-256 for allowlist
 ```
-Засича: PNG (данни след IEND, нестандартни чънкове, LSB χ²), JPEG/MP3/WAV/PDF структура, невидим Unicode, honeytokens, промени спрямо основния клон.
-Google Cloud Logging, Slack и план за ротация са както преди (виж `integrations/`). `PURRGUARD_MOCK=1` изключва директните Anthropic заявки - в тази версия разсъжденията са в Duo flows.
+Detects: PNG (data after IEND, non-standard chunks, LSB χ²), JPEG/MP3/WAV/PDF structure, invisible Unicode, honeytokens, changes against the base branch.
+Google Cloud Logging, Slack, and rotation plan are as before (see `integrations/`). `PURRGUARD_MOCK=1` disables direct Anthropic calls - in this version reasoning is in Duo flows.
 
-## Лиценз
+## License
 MIT.
 
 <!-- pipeline trigger 2026-10-06 18:47:09 -->

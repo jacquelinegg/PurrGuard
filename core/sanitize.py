@@ -14,15 +14,15 @@ def sanitize(path):
     if ext == ".png":
         img = Image.open(path)
         img = img.convert("RGBA" if img.mode in ("RGBA", "LA", "PA") else "RGB")
-        arr = np.array(img, dtype=np.uint8) & 0xFE  # нулиране на LSB равнината
+        arr = np.array(img, dtype=np.uint8) & 0xFE  # zero out LSB plane
         buf = io.BytesIO()
-        Image.fromarray(arr, img.mode).save(buf, "PNG")  # нов файл: без чънкове и без данни след края
+        Image.fromarray(arr, img.mode).save(buf, "PNG")  # new file: no chunks and no data after end
         return buf.getvalue()
     if ext in (".jpg", ".jpeg"):
         data = open(path, "rb").read()
         i = data.rfind(b"\xff\xd9")
         return data[:i + 2] if i != -1 else None
-    if ext == ".pdf":  # маха само данните след края; вградени файлове и скриптове се чистят ръчно
+    if ext == ".pdf":  # removes only data after end; embedded files and scripts are cleaned manually
         data = open(path, "rb").read()
         i = data.rfind(b"%%EOF")
         return data[:i + 5] + b"\n" if i != -1 else None
@@ -44,7 +44,7 @@ def sanitize(path):
             w.setparams(params)
             w.writeframes(a.tobytes())
         return buf.getvalue()
-    try:  # текстови файлове
+    try:  # text files
         text = open(path, encoding="utf-8").read()
     except (UnicodeDecodeError, OSError):
         return None

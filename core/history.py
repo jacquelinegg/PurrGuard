@@ -1,4 +1,4 @@
-"""Сканиране на цялата git история (за вече влезли файлове)."""
+"""Scanning the entire git history (for already committed files)."""
 import hashlib
 import json
 import os
@@ -30,7 +30,7 @@ def scan_history(cfg=None, max_commits=None):
             seen.add(blob)
             data = _git("show", f"{commit}:{line}").stdout
             if hashlib.sha256(data).hexdigest() in known:
-                continue  # законен Stego-Ops носител от някоя версия на манифеста
+                continue  # legitimate Stego-Ops carrier from some manifest version
             with tempfile.TemporaryDirectory() as d:
                 p = os.path.join(d, "f" + Path(line).suffix)
                 open(p, "wb").write(data)

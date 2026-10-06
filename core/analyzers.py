@@ -88,7 +88,7 @@ def _pov_pvalue(vals):
     m = exp >= 5
     if m.sum() < 20:
         return None
-    stat = (((even - odd)[m]) ** 2 / (even + odd)[m]).sum()  # = sum по двойката (o-e)^2/e
+    stat = (((even - odd)[m]) ** 2 / (even + odd)[m]).sum()  # = sum per pair (o-e)^2/e
     return float(1 - chi2.cdf(stat, m.sum() - 1))
 
 
@@ -156,7 +156,7 @@ def zero_width(path, min_chars=1):
     except (UnicodeDecodeError, OSError):
         return []
     if text.startswith("\ufeff"):
-        text = text[1:]  # легитимен BOM
+        text = text[1:]  # legitimate BOM
     chars = ZW_RE.findall(text)
     if len(chars) < min_chars:
         return []

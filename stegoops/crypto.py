@@ -26,13 +26,13 @@ class EnvProvider:
     def __init__(self, kek_b64=None):
         raw = kek_b64 or os.environ.get("STEGOOPS_KEK")
         if not raw:
-            raise CryptoError("Липсва STEGOOPS_KEK (генерирай с: python -m stegoops keygen)")
+            raise CryptoError("Missing STEGOOPS_KEK (generate with: python -m stegoops keygen)")
         try:
             self._kek = base64.b64decode(raw, validate=True)
         except Exception as e:
-            raise CryptoError("STEGOOPS_KEK не е валиден base64") from e
+            raise CryptoError("STEGOOPS_KEK is not valid base64") from e
         if len(self._kek) != 32:
-            raise CryptoError("STEGOOPS_KEK трябва да е точно 32 байта")
+            raise CryptoError("STEGOOPS_KEK must be exactly 32 bytes")
 
     def wrap(self, data: bytes, aad: bytes) -> bytes:
         nonce = os.urandom(12)
@@ -42,19 +42,19 @@ class EnvProvider:
         try:
             return AESGCM(self._kek).decrypt(blob[:12], blob[12:], aad)
         except Exception as e:
-            raise CryptoError("Неуспешно разкриване: грешен ключ, подменен носител или друг идентификатор") from e
+            raise CryptoError("Decryption failed: wrong key, tampered carrier, or different identifier") from e
 
 
 class KmsProvider:
-    """Google Cloud KMS. Изисква google-cloud-kms и права cloudkms.cryptoKeyVersions.useToEncrypt/Decrypt."""
+    """Google Cloud KMS. Requires google-cloud-kms and permissions cloudkms.cryptoKeyVersions.useToEncrypt/Decrypt."""
     name = "gcp-kms"
 
     def __init__(self, key_name=None, client=None):
         self.key_name = key_name or os.environ.get("STEGOOPS_KMS_KEY")
         if not self.key_name:
-            raise CryptoError("Липсва STEGOOPS_KMS_KEY (projects/P/locations/L/keyRings/R/cryptoKeys/K)")
+            raise CryptoError("Missing STEGOOPS_KMS_KEY (projects/P/locations/L/keyRings/R/cryptoKeys/K)")
         if client is None:
-            from google.cloud import kms  # lazy: по избор
+            from google.cloud import kms  # lazy: optional
             client = kms.KeyManagementServiceClient()
         self._c = client
 
@@ -67,7 +67,7 @@ class KmsProvider:
             return self._c.decrypt(request={"name": self.key_name, "ciphertext": blob,
                                             "additional_authenticated_data": aad}).plaintext
         except Exception as e:
-            raise CryptoError("KMS отказа разкриване") from e
+            raise CryptoError("KMS refused decryption") from e
 
 
 def get_provider(name=None):
@@ -85,11 +85,11 @@ def encrypt(plaintext: bytes, provider, aad: bytes) -> bytes:
 
 def decrypt(blob: bytes, provider, aad: bytes) -> bytes:
     if blob[:4] != MAGIC or blob[4] != VERSION:
-        raise CryptoError("Невалиден формат (грешен ключ за позиции или няма payload)")
+        raise CryptoError("Invalid format (wrong position key or no payload)")
     n = int.from_bytes(blob[5:7], "big")
     wrapped, rest = blob[7:7 + n], blob[7 + n:]
     dek = provider.unwrap(wrapped, aad)
     try:
         return AESGCM(dek).decrypt(rest[:12], rest[12:], aad)
     except Exception as e:
-        raise CryptoError("Целостта е нарушена (GCM таг не съвпада)") from e
+            raise CryptoError("Integrity violated (GCM tag does not match)") from e

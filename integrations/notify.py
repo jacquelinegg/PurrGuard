@@ -10,4 +10,4 @@ def slack(text):
     try:
         requests.post(url, json={"text": text}, timeout=15)
     except requests.RequestException as e:
-        print("[slack] неуспешно:", e)
+        print("[slack] failed:", e)

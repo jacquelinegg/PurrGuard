@@ -70,7 +70,7 @@ expiry-watch:
     - if: $CI_PIPELINE_SOURCE == "schedule" || ($CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH)
   script:
     - python -m stegoops verify --warn-days 7 --json | tee expiry.json || true
-    - python -m stegoops watch --within 7      # нужен е GITLAB_API_TOKEN само ако има наближаващ срок
+    - python -m stegoops watch --within 7      # GITLAB_API_TOKEN is only needed if there is an approaching expiry
   artifacts:
     when: always
     paths: [expiry.json]
@@ -82,7 +82,7 @@ rotate-secrets:
   needs: []
   environment:
     name: staging
-    action: access      # не създава deployment, само дава достъп до променливите на средата
+    action: access      # does not create a deployment, only provides access to environment variables
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

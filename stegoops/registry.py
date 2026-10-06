@@ -36,10 +36,10 @@ class Client:
             params = dict(p.split("=", 1) for p in r.headers.get("WWW-Authenticate", "").partition(" ")[2].replace('"', "").split(",") if "=" in p)
             realm = params.pop("realm", None)
             if not realm:
-                raise RegistryError("Регистърът отказа достъп без Bearer realm")
+                raise RegistryError("Registry denied access without Bearer realm")
             t = self.s.get(realm, params={**params, "scope": f"repository:{self.repo}:pull"}, auth=self.auth, timeout=30)
             if t.status_code != 200:
-                raise RegistryError(f"Токен за регистъра: HTTP {t.status_code}")
+                raise RegistryError(f"Registry token: HTTP {t.status_code}")
             self.token = t.json().get("token") or t.json().get("access_token")
             return self._get(path, **kw)
         if r.status_code != 200:
@@ -57,18 +57,18 @@ class Client:
     def file_from_layers(self, layers, path):
         target = os.path.normpath(path).lstrip("/")
         d, b = os.path.split(target)
-        for layer in reversed(layers):  # горният слой печели
+        for layer in reversed(layers):  # top layer wins
             r = self._get(f"/v2/{self.repo}/blobs/{layer['digest']}", stream=True)
             with tarfile.open(fileobj=r.raw, mode="r|*") as tar:
                 for mem in tar:
                     name = os.path.normpath(mem.name).lstrip("/")
                     if name == target and mem.isfile():
                         if mem.size > MAX_FILE:
-                            raise RegistryError("Файлът е твърде голям")
+                            raise RegistryError("The file is too large")
                         return tar.extractfile(mem).read()
                     if name == os.path.join(d, ".wh." + b):
-                        raise RegistryError(f"{path} е изтрит в по-горен слой")
-        raise RegistryError(f"{path} не е намерен в image-а")
+                        raise RegistryError(f"{path} is deleted in an upper layer")
+        raise RegistryError(f"{path} not found in image")
 
 
 def fetch_file(image_ref, path, session=None, scheme="https", password=None):

@@ -1,4 +1,4 @@
-"""Генерира тестови файлове с ФАЛШИВ ключ. Пуска се: python tests/make_samples.py"""
+"""Generates test files with FAKE keys. Run: python tests/make_samples.py"""
 import os
 import struct
 import wave
@@ -27,7 +27,7 @@ def bits(b):
 img = base_image()
 Image.fromarray(img).save(f"{out}/clean.png")
 
-# 1) LSB: тайната + случаен (криптиран) пълнеж върху 40% от канала
+# 1) LSB: secret + random (encrypted) padding on 40% of the channel
 stego = img.copy()
 flat = stego[:, :, 0].ravel()
 payload = np.concatenate([bits(FAKE), rng.integers(0, 2, int(len(flat) * 0.4), dtype=np.uint8)])
@@ -35,23 +35,23 @@ flat[:len(payload)] = (flat[:len(payload)] & 0xFE) | payload
 stego[:, :, 0] = flat.reshape(stego.shape[:2])
 Image.fromarray(stego).save(f"{out}/stego_lsb.png")
 
-# 2) данни след IEND
+# 2) data after IEND
 Image.fromarray(img).save(f"{out}/trailing.png")
 open(f"{out}/trailing.png", "ab").write(FAKE)
 
-# 3) тайна в текстов PNG чънк
+# 3) secret in a text PNG chunk
 raw = open(f"{out}/clean.png", "rb").read()
 cd = b"Comment\x00" + FAKE
 chunk = struct.pack(">I", len(cd)) + b"tEXt" + cd + struct.pack(">I", zlib.crc32(b"tEXt" + cd))
 i = raw.rfind(b"IEND") - 4
 open(f"{out}/chunk.png", "wb").write(raw[:i] + chunk + raw[i:])
 
-# 4) Zero-width в SQL
+# 4) Zero-width in SQL
 msg = "".join("\u200c" if b == "1" else "\u200b" for byte in FAKE for b in f"{byte:08b}")
 open(f"{out}/migration.sql", "w", encoding="utf-8").write(f"-- add users table{msg}\nCREATE TABLE users(id INT);\n")
 open(f"{out}/clean.sql", "w").write("-- add users table\nCREATE TABLE users(id INT);\n")
 
-# 5) WAV: чист и със скрит чънк след данните
+# 5) WAV: clean and with hidden chunk after data
 t = np.arange(44100 * 3) / 44100
 noise = np.convolve(rng.normal(0, 1, t.size), np.ones(25) / 25, mode="same")
 audio = (noise / noise.std() * 4000 + 2000 * np.sin(2 * np.pi * 220 * t) + rng.normal(0, 40, t.size)).astype("<i2")
@@ -62,4 +62,4 @@ extra = b"xtra" + struct.pack("<I", len(FAKE)) + FAKE + (b"\x00" if len(FAKE) % 
 raw += extra
 raw[4:8] = struct.pack("<I", len(raw) - 8)
 open(f"{out}/stego.wav", "wb").write(bytes(raw))
-print("Готово:", sorted(os.listdir(out)))
+print("Done:", sorted(os.listdir(out)))

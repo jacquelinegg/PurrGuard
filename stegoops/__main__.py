@@ -28,7 +28,7 @@ def make_logo(path=LOGO, size=512):
     d.ellipse([c - 60, c - 30, c - 30, c], fill=(30, 30, 30)); d.ellipse([c + 30, c - 30, c + 60, c], fill=(30, 30, 30))
     d.polygon([(c - 12, c + 20), (c + 12, c + 20), (c, c + 38)], fill=(200, 90, 100))
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    arr = np.array(im, dtype=np.int16) + rng.integers(-2, 3, (size, size, 3))  # финално зърно над фигурата
+    arr = np.array(im, dtype=np.int16) + rng.integers(-2, 3, (size, size, 3))  # final grain over the figure
     Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8)).save(path)
     return path
 
@@ -39,7 +39,7 @@ def _collect_secrets(a):
         s.update(json.load(sys.stdin if a.json == "-" else open(a.json)))
     for n in a.from_env or []:
         if n not in os.environ:
-            sys.exit(f"Липсва променлива {n}")
+            sys.exit(f"Missing environment variable {n}")
         s[n] = os.environ[n]
     for kv in a.secret or []:
         k, _, v = kv.partition("=")

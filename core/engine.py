@@ -45,7 +45,7 @@ def scan_file(path, cfg, repo_path=None):
     elif ext in TEXT_EXT:
         out = A.zero_width(path, cfg["min_zero_width_chars"])
     reg = honeytokens.load(cfg.get("honeytokens_file", honeytokens.DEFAULT_FILE))
-    return out + honeytokens.scan(path, reg, repo_path or path)  # примамките се търсят във ВСИЧКИ файлове
+    return out + honeytokens.scan(path, reg, repo_path or path)  # honeytokens are searched in ALL files
 
 
 def run(files=None, cfg=None):

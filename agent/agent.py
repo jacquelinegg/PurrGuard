@@ -3,7 +3,7 @@ import json
 import os
 import re
 
-MODEL = os.environ.get("PURRGUARD_MODEL", "claude-sonnet-4-6")  # провери актуалното име в документацията на Anthropic
+MODEL = os.environ.get("PURRGUARD_MODEL", "claude-sonnet-4-6")  # check the current name in Anthropic's documentation
 
 AUDITOR = ("You are a security Auditor agent. You receive results from a steganography scanner. "
            "For each finding: briefly explain what it means, assess false-positive likelihood, "
@@ -19,9 +19,9 @@ def redact(text: str) -> str:
     return re.sub(r"(AKIA|AIza|glpat-|sk-ant-)[\w\-]+", r"\1***", text)
 
 
-def _fallback(results):  # без API: просто списък на находките
+def _fallback(results):  # without API: just a list of findings
     lines = [f"- **{f['file']}** — {f['severity']}: {f['detail']}" for f in results["findings"]]
-    return "\n".join(lines) or "Няма находки."
+    return "\n".join(lines) or "No findings."
 
 
 def _ask(system, user):
@@ -34,9 +34,9 @@ def _ask(system, user):
 
 def analyze(results, playbook=""):
     payload = redact(json.dumps(results["findings"], ensure_ascii=False, indent=2))
-    base_plan = "1. Изчистените файлове са подготвени в автоматичен fix MR.\n2. Ротирайте всички ключове, които са били достъпни.\n3. Уведомете екипа по сигурност."
+    base_plan = "1. Sanitized files are prepared in an automatic fix MR.\n2. Rotate all keys that were accessible.\n3. Notify the security team."
     if os.environ.get("PURRGUARD_MOCK") == "1" or not os.environ.get("ANTHROPIC_API_KEY"):
         return _fallback(results), base_plan + ("\n\n" + playbook if playbook else "")
     audit = _ask(AUDITOR, payload)
-    plan = _ask(REMEDIATOR, audit + "\n\nГотов план за ротация (включи го без промяна на командите):\n" + playbook)
+    plan = _ask(REMEDIATOR, audit + "\n\nReady rotation plan (include it without changing the commands):\n" + playbook)
     return audit, plan

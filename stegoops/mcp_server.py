@@ -7,11 +7,11 @@ import sys
 
 PROTOCOL = "2024-11-05"
 TOOLS = [
-    {"name": "stegoops_verify", "description": "Проверява SHA-256 на Stego-Ops носителите спрямо манифеста и сроковете (без ключ).",
-     "inputSchema": {"type": "object", "properties": {"warn_days": {"type": "integer", "description": "предупреди за срок под N дни"}}}},
-    {"name": "stegoops_expiry", "description": "Носители, чийто срок изтича в следващите N дни (само пътища, имена на тайни, срок).",
+    {"name": "stegoops_verify", "description": "Verifies SHA-256 of Stego-Ops carriers against manifest and expiry dates (no key).",
+     "inputSchema": {"type": "object", "properties": {"warn_days": {"type": "integer", "description": "warn if expiry is within N days"}}}},
+    {"name": "stegoops_expiry", "description": "Carriers expiring in the next N days (only paths, secret names, expiry).",
      "inputSchema": {"type": "object", "properties": {"within_days": {"type": "integer"}}}},
-    {"name": "purrguard_scan", "description": "Сканира проследяваните файлове за скрита ексфилтрация; връща само файл/вид/тежест.",
+    {"name": "purrguard_scan", "description": "Scans tracked files for hidden exfiltration; returns only file/type/severity.",
      "inputSchema": {"type": "object", "properties": {}}},
 ]
 
@@ -34,7 +34,7 @@ def call_tool(name, args):
 
 def handle(msg):
     mid, method, params = msg.get("id"), msg.get("method"), msg.get("params") or {}
-    if mid is None:  # нотификации (напр. notifications/initialized) не получават отговор
+    if mid is None:  # notifications (e.g. notifications/initialized) do not receive a response
         return None
     if method == "initialize":
         result = {"protocolVersion": params.get("protocolVersion", PROTOCOL), "capabilities": {"tools": {}},
@@ -48,11 +48,11 @@ def handle(msg):
             out = call_tool(params.get("name"), params.get("arguments") or {})
             result = {"content": [{"type": "text", "text": json.dumps(out, ensure_ascii=False)}], "isError": False}
         except KeyError:
-            return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32602, "message": "непознат инструмент"}}
-        except Exception as e:  # грешките се връщат като резултат, не като срив
-            result = {"content": [{"type": "text", "text": f"грешка: {type(e).__name__}"}], "isError": True}
+            return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32602, "message": "unknown tool"}}
+        except Exception as e:  # errors are returned as results, not as crashes
+            result = {"content": [{"type": "text", "text": f"error: {type(e).__name__}"}], "isError": True}
     else:
-        return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32601, "message": "непознат метод"}}
+        return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32601, "message": "unknown method"}}
     return {"jsonrpc": "2.0", "id": mid, "result": result}
 
 
@@ -64,7 +64,7 @@ def main():
         try:
             resp = handle(json.loads(line))
         except json.JSONDecodeError:
-            resp = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "невалиден JSON"}}
+            resp = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "invalid JSON"}}
         if resp is not None:
             sys.stdout.write(json.dumps(resp) + "\n")
             sys.stdout.flush()

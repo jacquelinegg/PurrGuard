@@ -1,86 +1,86 @@
-# SETUP — от нула до работещ демо проект
+# SETUP — from zero to a working demo project
 
-Крайният срок на хакатона е **27 октомври 2026, 13:00 UTC**. Път: **Path A (Start Fresh)**, ниво: **Hands-off**.
+The hackathon deadline is **27 October 2026, 13:00 UTC**. Path: **Path A (Start Fresh)**, level: **Hands-off**.
 
-## 0. Предварително
-- Регистрация в Devpost за хакатона + GitLab contributor onboarding (https://contributors.gitlab.com/transcend-hackathon, одобрението отнема ~24 ч).
-- В твоя GitLab проект да е включена Duo Agent Platform (AI > Flows трябва да се вижда в страничната лента).
-- Локално: Python 3.12, git. За Google Cloud: `gcloud` (или Cloud Shell) и включено таксуване на проекта.
+## 0. Prerequisites
+- Devpost registration for the hackathon + GitLab contributor onboarding (https://contributors.gitlab.com/transcend-hackathon, approval takes ~24 h).
+- Your GitLab project must have Duo Agent Platform enabled (AI > Flows should be visible in the sidebar).
+- Locally: Python 3.12, git. For Google Cloud: `gcloud` (or Cloud Shell) and billing enabled on the project.
 
-## 1. Локална проверка (5 мин)
+## 1. Local check (5 min)
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python tests/test_purrguard.py && python tests/test_stegoops.py && python tests/test_autopilot.py
 python -m stegoops init-demo
 ```
-`init-demo` прави лого, запечатва 2 **ФАЛШИВИ** тайни и **печата `STEGOOPS_KEK` само веднъж** — копирай го (ще го сложиш в GitLab). Не го комитвай.
-Резултатът са променен `app/assets/logo.png` и `.stegoops/manifest.json`: **комитни и двата**.
+`init-demo` creates a logo, seals 2 **FAKE** secrets, and **prints `STEGOOPS_KEK` only once** — copy it (you will put it in GitLab). Do not commit it.
+The result is a modified `app/assets/logo.png` and `.stegoops/manifest.json`: **commit both**.
 
-## 2. GitLab проект
-1. Нов **публичен** празен проект. (MIT лицензът е в `LICENSE`; провери, че се вижда в About.)
-2. CODEOWNERS: смени `@security-owners` с твоя потребител или група, която съществува.
-3. **Преди първия push** настрой по-долу променливите, иначе `deploy-staging` ще падне.
+## 2. GitLab project
+1. New **public** empty project. (The MIT license is in `LICENSE`; verify it is visible in About.)
+2. CODEOWNERS: replace `@security-owners` with your user or an existing group.
+3. **Before the first push** configure the variables below, otherwise `deploy-staging` will fail.
 
-### Настройки
-| Къде | Какво |
+### Settings
+| Where | What |
 |---|---|
-| Settings > Repository > Protected branches | `main` е protected. **Allowed to merge: Developers + Maintainers** (за да слива ботът). Остави изключено „Require approval from Code Owners“ — иначе auto-merge чака човек. Компенсиращи защити: `rotation-guard`, PurrGuard, „Pipelines must succeed“ |
-| Settings > Merge requests | включи **Pipelines must succeed** |
-| Settings > Access tokens | токен `purrguard-bot`, роля **Developer**, scope **api**. Копирай стойността |
-| Settings > CI/CD > Variables | `STEGOOPS_KEK` = ключът от стъпка 1 — **Masked + Protected, Environment scope: `staging`** |
-| | `GITLAB_API_TOKEN` = токенът — **Masked + Protected**, scope: All |
-| Deploy > Container Registry | включен (по подразбиране) |
+| Settings > Repository > Protected branches | `main` is protected. **Allowed to merge: Developers + Maintainers** (so the bot can merge). Leave "Require approval from Code Owners" disabled — otherwise auto-merge waits for a human. Compensating controls: `rotation-guard`, PurrGuard, "Pipelines must succeed" |
+| Settings > Merge requests | enable **Pipelines must succeed** |
+| Settings > Access tokens | token `purrguard-bot`, role **Developer**, scope **api**. Copy the value |
+| Settings > CI/CD > Variables | `STEGOOPS_KEK` = the key from step 1 — **Masked + Protected, Environment scope: `staging`** |
+| | `GITLAB_API_TOKEN` = the token — **Masked + Protected**, scope: All |
+| Deploy > Container Registry | enabled (by default) |
 
-### Първи push
+### First push
 ```bash
 git init -b main && git add -A && git commit -m "PurrGuard + Stego-Ops"
-git remote add origin https://gitlab.com/<потребител>/purrguard-stegoops.git
+git remote add origin https://gitlab.com/<user>/purrguard-stegoops.git
 git push -u origin main
 ```
-Очаквано: `tests`, `stegoops-verify` → `build-app` → `deploy-staging` (в лога: `canary (трябва да е ***): ***`; артефакт `leak_audit.json`, verdict `clean`).
-Ако registry клиентът не успее, `--fallback-local` печата предупреждение и продължава с пинатия локален носител — деплоят пак минава.
+Expected: `tests`, `stegoops-verify` → `build-app` → `deploy-staging` (in logs: `canary (should be ***): ***`; artifact `leak_audit.json`, verdict `clean`).
+If the registry client fails, `--fallback-local` prints a warning and continues with the pinned local carrier — the deploy still passes.
 
-## 3. Google Cloud (бонус до +0.2 точки)
-В Cloud Shell или локално, след `gcloud auth login`:
+## 3. Google Cloud (bonus up to +0.2 points)
+In Cloud Shell or locally, after `gcloud auth login`:
 ```bash
-export GCP_PROJECT_ID=<твоят-проект>   # по желание: export GCP_REGION=europe-west1
+export GCP_PROJECT_ID=<your-project>   # optional: export GCP_REGION=europe-west1
 bash deploy/gcp_setup.sh
 ```
-Скриптът включва API-тата, създава Artifact Registry репо `purrguard`, service account `purrguard-ci` с нужните роли и ключ `purrguard-ci-key.json`.
-После в GitLab (Settings > CI/CD > Variables):
-- `GCP_PROJECT_ID`, `GCP_REGION` (обикновени);
-- `GCP_SA_KEY` — тип **File**, съдържание: целият JSON, **Protected**.
-Изтрий локалния ключ (`shred -u purrguard-ci-key.json`). Следващият push на `main` пуска `deploy-cloudrun`; публичният адрес е в лога и в артефакта `cloudrun_url.txt` — него слагаш в Devpost.
-Ако `--allow-unauthenticated` е блокирано от организационна политика, трябва да се разреши публичен достъп (журито има нужда от публичен линк).
-По-добра практика за продукция: Workload Identity Federation вместо ключ (оставено като следваща стъпка).
+The script enables APIs, creates an Artifact Registry repo `purrguard`, a service account `purrguard-ci` with the needed roles, and a key `purrguard-ci-key.json`.
+Then in GitLab (Settings > CI/CD > Variables):
+- `GCP_PROJECT_ID`, `GCP_REGION` (regular);
+- `GCP_SA_KEY` — type **File**, content: the entire JSON, **Protected**.
+Delete the local key (`shred -u purrguard-ci-key.json`). The next push to `main` triggers `deploy-cloudrun`; the public address is in the logs and in the `cloudrun_url.txt` artifact — put that in Devpost.
+If `--allow-unauthenticated` is blocked by organizational policy, public access must be enabled (the jury needs a public link).
+Better production practice: Workload Identity Federation instead of a key (left as a next step).
 
 ## 4. Duo flows
-1. AI > Flows > New flow → постави `duo/flows/stegoops-mr-guardian.yaml`; triggers: **mention** (и по желание assign/reviewer на flow-а).
-2. New flow → постави `duo/flows/stegoops-deploy-sentinel.yaml`; triggers: **Pipeline** (да се задейства при pipeline събития) и **mention**.
-3. Flow builder-ът валидира YAML-а. **Тук се очакват дребни корекции**: имената на tools в `toolset` (`create_issue`, `create_issue_note`, `gitlab_api_get`, `get_merge_request`, …) и допустимите полета зависят от версията. Оправи каквото се оплаче и върни поправката в репото.
-4. Service account-ът на flow-а трябва да е член на проекта (Developer), за да коментира.
-5. MCP: `.gitlab/duo/mcp.json` регистрира `purrguard` MCP сървъра. Провери в твоята версия къде се прилага (напр. Duo Chat в IDE). Споменавай го в подаването само ако го покажеш на видеото.
+1. AI > Flows > New flow → upload `duo/flows/stegoops-mr-guardian.yaml`; triggers: **mention** (and optionally assign/reviewer of the flow).
+2. New flow → upload `duo/flows/stegoops-deploy-sentinel.yaml`; triggers: **Pipeline** (should trigger on pipeline events) and **mention**..
+3. The Flow builder validates the YAML. **Small corrections are expected here**: tool names in `toolset` (`create_issue`, `create_issue_note`, `gitlab_api_get`, `get_merge_request`, …) and allowed fields depend on the version. Fix whatever it complains about and return the fix to the repo.
+4. The flow's service account must be a member of the project (Developer) to comment.
+5. MCP: `.gitlab/duo/mcp.json` registers the `purrguard` MCP server. Check in your version where it applies (e.g. Duo Chat in IDE). Mention it in the submission only if you show it in the video.
 
-## 5. График (за автоматичния цикъл)
-Build > Pipeline schedules > New schedule: всеки ден, целеви клон `main`. Тя пуска `expiry-watch`, `rotate-secrets`, `purrguard-history` и `pages`.
+## 5. Schedule (for the automatic cycle)
+Build > Pipeline schedules > New schedule: every day, target branch `main`. It runs `expiry-watch`, `rotate-secrets`, `purrguard-history`, and `pages`.
 
-## 6. Демо на цикъла (сега, без да чакаш 30 дни)
+## 6. Cycle demo (now, without waiting 30 days)
 ```bash
-export STEGOOPS_KEK=<ключът>
-python -m stegoops rotate --carrier app/assets/logo.png --ttl-days 3   # скъсява срока до 3 дни
-git add -A && git commit -m "demo: кратък срок" && git push
+export STEGOOPS_KEK=<the-key>
+python -m stegoops rotate --carrier app/assets/logo.png --ttl-days 3   # shortens the TTL to 3 days
+git add -A && git commit -m "demo: short TTL" && git push
 ```
-Изчакай push pipeline-а, после Build > Pipelines > **Run pipeline** на `main`. Наблюдавай:
-1. `expiry-watch` отваря issue с етикет `stegoops::rotation`;
-2. `rotate-secrets` отваря MR `stegoops/rotate-…` с auto-merge;
-3. pipeline-ът на MR (`rotation-guard`, `purrguard-mr`, `stegoops-verify`, `tests`) минава и MR се слива сам;
+Wait for the push pipeline, then Build > Pipelines > **Run pipeline** on `main`. Watch:
+1. `expiry-watch` opens an issue with label `stegoops::rotation`;
+2. `rotate-secrets` opens MR `stegoops/rotate-…` with auto-merge;
+3. the MR pipeline (`rotation-guard`, `purrguard-mr`, `stegoops-verify`, `tests`) passes and the MR merges automatically;
 4. `build-app` → `deploy-staging` → `deploy-cloudrun`;
-5. Deploy Sentinel публикува резултата в issue-то.
+5. Deploy Sentinel publishes the result in the issue.
 
-Тестът за подменен носител: нов клон с друг `logo.png` → MR → `purrguard-mr` пада (`carrier_tampered`). Остави този MR отворен — нужна е видима pipeline история.
+Tampered carrier test: new branch with a different `logo.png` → MR → `purrguard-mr` fails (`carrier_tampered`). Leave this MR open — visible pipeline history is needed.
 
-## 7. Подаване
-- Попълни в `DEVPOST.md`: линк към репото, YouTube видео (< 3 мин, без чужди марки и музика), линк към Cloud Run.
-- Избери **Path A** и ниво **Hands-off**; при желание — Google Cloud бонус (линкът трябва да е публичен до обявяване на победителите).
-- Сигурност на репото: ако се съмняваш, че KEK е изтекъл, ротирай го (`keygen`, нов `seal`) преди да направиш проекта публичен.
+## 7. Submission
+- Fill in `DEVPOST.md`: repo link, YouTube video (< 3 min, no third-party branding or music), Cloud Run link.
+- Choose **Path A** and level **Hands-off**; optionally — Google Cloud bonus (the link must be public until winners are announced).
+- Repository security: if you suspect the KEK has been exposed, rotate it (`keygen`, new `seal`) before making the project public.

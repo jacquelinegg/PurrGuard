@@ -1,4 +1,4 @@
-"""Пълен тест: python tests/test_purrguard.py"""
+"""Full test: python tests/test_purrguard.py"""
 import os
 import shutil
 import subprocess
@@ -37,20 +37,20 @@ flagged = {r["file"] for r in res["findings"]}
 check("all 5 infected files are caught", all(S + f in flagged for f in bad))
 check("0 false positives on 3 clean files", not any(S + f in flagged for f in good))
 
-# обезвреждане: изчистеният файл вече не дава находки
+# sanitization: the cleaned file no longer produces findings
 fixed = fixer.build_fixes(res["findings"], outdir="fixed_out")
 check("all infected files are sanitized", len(fixed) == len(bad))
 res2 = engine.run(["fixed_out/" + S + f for f in bad], cfg)
 check("no findings after sanitization", not res2["findings"])
 
-# ротация
+# rotation
 pb = rotation.playbook(res["findings"])
 check("AWS key rotation playbook", "update-access-key" in pb)
 sa = b'{"type": "service_account", "private_key_id": "' + b"a" * 40 + b'", "client_email": "x@p.iam.gserviceaccount.com", "k": "api_key=ABCDEFGH12345"}'
 pb2 = rotation.playbook([{"secrets": A.classify_secret(sa)}])
 check("GCP: gcloud iam service-accounts keys disable", "gcloud iam service-accounts keys disable " + "a" * 40 in pb2)
 
-# сравнение с основния клон + история
+# comparison with main branch + history
 subprocess.run(["git", "init", "-q", "."])
 subprocess.run(["git", "config", "user.email", "a@b"])
 subprocess.run(["git", "config", "user.name", "t"])
@@ -68,7 +68,7 @@ subprocess.run(["git", "commit", "-qm", "remove"])
 h = history.scan_history(cfg)
 check("history finds deleted infected file", any(f["file"] == "logo.png" for f in h["findings"]))
 
-# --- демо файлове ---
+# --- demo files ---
 subprocess.run([sys.executable, os.path.join(ROOT, "tests", "make_demo.py")], check=True, capture_output=True)
 dres = engine.run(["demo_files/" + f for f in sorted(os.listdir("demo_files")) if f[0].isdigit()], cfg)
 dflag = {os.path.basename(f["file"]) for f in dres["findings"]}
@@ -116,5 +116,5 @@ check("severities mapped (CRITICAL/ERROR)", {s for _, s in fc.lg.rows} <= {"CRIT
 check("no secrets in logs", "AKIAFAKE" not in str(fc.lg.rows))
 page = generate("public")
 check("dashboard is generated", "PurrGuard" in open(page, encoding="utf-8").read())
-print("\nВСИЧКО МИНАВА" if ok else "\nИМА ГРЕШКИ")
+print("\nALL PASS" if ok else "\nFAILURES")
 sys.exit(0 if ok else 1)

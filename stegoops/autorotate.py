@@ -15,7 +15,7 @@ BRANCH_PREFIX = "stegoops/rotate-"
 
 
 def expiring(manifest_path=vault.MANIFEST, within_days=7, now=None):
-    """Носители, чийто срок изтича след <= within_days дни (или вече е изтекъл). Без ключ, без тайни."""
+    """Carriers expiring within <= within_days days (or already expired). No key, no secrets."""
     now = now or vault._now()
     out = []
     for e in vault.load_manifest(manifest_path)["carriers"]:
@@ -29,12 +29,12 @@ def expiring(manifest_path=vault.MANIFEST, within_days=7, now=None):
 def changed_files(base):
     r = subprocess.run(["git", "diff", "--name-only", base, "HEAD"], capture_output=True, text=True)
     if r.returncode != 0:
-        raise vault.VaultError("git diff неуспешен: " + r.stderr.strip())
+        raise vault.VaultError("git diff failed: " + r.stderr.strip())
     return [f for f in r.stdout.split("\n") if f]
 
 
 def guard_rotation(base, manifest_path=vault.MANIFEST):
-    """Ротационен MR може да променя САМО носителите и манифеста. Връща нарушенията (празен списък = ОК)."""
+    """A rotation MR can change ONLY carriers and manifest. Returns violations (empty list = OK)."""
     allowed = {os.path.normpath(e["path"]) for e in vault.load_manifest(manifest_path)["carriers"]}
     allowed.add(os.path.normpath(manifest_path))
     return [f for f in changed_files(base) if os.path.normpath(f) not in allowed]
@@ -46,7 +46,7 @@ class GitLab:
         self.pid = project or os.environ["CI_PROJECT_ID"]
         self.token = token or os.environ.get("GITLAB_API_TOKEN")
         if not self.token:
-            raise vault.VaultError("Липсва GITLAB_API_TOKEN (project access token, scope api, роля Developer)")
+            raise vault.VaultError("Missing GITLAB_API_TOKEN (project access token, scope api, role Developer)")
         self.s = session or requests.Session()
 
     def _req(self, method, path, ok=(200, 201), **kw):
@@ -78,7 +78,7 @@ class GitLab:
                                                           "description": description, "labels": label, "remove_source_branch": True})
 
     def automerge(self, iid, retries=12, delay=5, sleep=time.sleep):
-        """Слива, когато pipeline-ът мине. Pipeline-ът на новия MR може още да не съществува - опитваме пак."""
+        """Merges when the pipeline passes. The new MR's pipeline may not exist yet - retries."""
         for i in range(retries):
             r = self.s.request("PUT", f"{self.api}/projects/{self.pid}/merge_requests/{iid}/merge",
                                headers={"PRIVATE-TOKEN": self.token}, timeout=30,
@@ -92,24 +92,24 @@ class GitLab:
 
 
 def watch(within_days=7, gl=None, manifest_path=vault.MANIFEST):
-    """Отваря (веднъж) issue за ротация, ако има наближаващ срок. Връща (issue, items) или (None, [])."""
+    """Opens (once) a rotation issue if there is an approaching expiry. Returns (issue, items) or (None, [])."""
     items = expiring(manifest_path, within_days)
     if not items:
         return None, []
     gl = gl or GitLab()
     issue = gl.find_open_issue()
     if not issue:
-        lines = [f"- `{i['path']}` ({i['env']}): валиден до {i['expires_at']} ({i['days_left']} дни); тайни (само имена): {', '.join(i['names'])}"
+        lines = [f"- `{i['path']}` ({i['env']}): valid until {i['expires_at']} ({i['days_left']} days); secrets (names only): {', '.join(i['names'])}"
                  for i in items]
-        issue = gl.open_issue("[Stego-Ops] Наближава срокът на пакет с тайни - предстои автоматична ротация",
-                              "Засечено без ключ, от манифеста:\n\n" + "\n".join(lines) +
-                              "\n\nСледва: CI задачата `rotate-secrets` (единствената с ключ) ще направи ротация и ще отвори MR с auto-merge. "
-                              "Агентът Deploy Sentinel проверява резултата след деплоя. Стойности на тайни не се показват никога.")
+        issue = gl.open_issue("[Stego-Ops] Secret package expiry approaching - automatic rotation pending",
+                              "Detected without key, from manifest:\n\n" + "\n".join(lines) +
+                              "\n\nNext: the `rotate-secrets` CI job (the only one with the key) will perform rotation and open an MR with auto-merge. "
+                              "The Deploy Sentinel agent checks the result after deploy. Secret values are never shown.")
     return issue, items
 
 
 def rotate_and_open_mr(within_days, provider_factory, ttl_days=30, gl=None, manifest_path=vault.MANIFEST, sleep=time.sleep):
-    """Единственото привилегировано действие. provider_factory(име) -> провайдър с ключа (KEK/KMS)."""
+    """The only privileged action. provider_factory(name) -> provider with the key (KEK/KMS)."""
     gl = gl or GitLab()
     issue, items = watch(within_days, gl, manifest_path)
     if not items:
@@ -122,10 +122,10 @@ def rotate_and_open_mr(within_days, provider_factory, ttl_days=30, gl=None, mani
     files[manifest_path] = open(manifest_path, "rb").read()
     branch = BRANCH_PREFIX + vault._now().strftime("%Y%m%d%H%M%S")
     gl.create_branch(branch, gl.default_branch())
-    gl.commit(branch, "stegoops: автоматична ротация на пакет с тайни", files)
-    mr = gl.create_mr(branch, gl.default_branch(), "[Stego-Ops] Автоматична ротация на тайните",
-                      f"Closes #{issue['iid']}\n\nПроменени са само носителите и манифестът (проверява се от `rotation-guard`). "
-                      "Слива се автоматично, когато pipeline-ът мине (PurrGuard + verify + тестове).")
+    gl.commit(branch, "stegoops: automatic secret package rotation", files)
+    mr = gl.create_mr(branch, gl.default_branch(), "[Stego-Ops] Automatic secret rotation",
+                      f"Closes #{issue['iid']}\n\nOnly carriers and manifest have changed (verified by `rotation-guard`). "
+                      "Merges automatically when the pipeline passes (PurrGuard + verify + tests).")
     merged_when_green = gl.automerge(mr["iid"], sleep=sleep)
     return {"issue": issue["web_url"], "mr": mr["web_url"], "iid": mr["iid"], "auto_merge": merged_when_green,
             "carriers": [i["path"] for i in items]}

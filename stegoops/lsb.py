@@ -21,7 +21,7 @@ class StegoError(Exception):
 
 def positions(seed: bytes, total: int, n: int) -> np.ndarray:
     if n > total:
-        raise StegoError("Носителят е твърде малък за този payload")
+        raise StegoError("The carrier is too small for this payload")
     stream = hashlib.shake_256(b"stegoops-pos-v1" + seed).digest(8 * n)
     swap, out = {}, np.empty(n, dtype=np.int64)
     for i in range(n):
@@ -39,7 +39,7 @@ def _load(png: bytes):
     arr = np.array(img, dtype=np.uint8)
     rgb = np.ascontiguousarray(arr[..., :3])
     if rgb.size > MAX_SUBPIXELS:
-        raise StegoError("Носителят е твърде голям (над 40M под-пиксела)")
+        raise StegoError("The carrier is too large (over 40M sub-pixels)")
     return img.mode, arr, rgb
 
 
@@ -51,7 +51,7 @@ def capacity_bytes(png: bytes) -> int:
 def embed(png: bytes, seed: bytes, payload: bytes) -> bytes:
     mode, arr, rgb = _load(png)
     if len(payload) > (rgb.size - HEADER_BITS) // 8:
-        raise StegoError(f"Payload {len(payload)} B не се събира (капацитет {(rgb.size - HEADER_BITS) // 8} B)")
+        raise StegoError(f"Payload {len(payload)} B does not fit (capacity {(rgb.size - HEADER_BITS) // 8} B)")
     data = len(payload).to_bytes(4, "big") + payload
     bits = np.unpackbits(np.frombuffer(data, dtype=np.uint8))
     pos = positions(seed, rgb.size, len(bits))
@@ -69,17 +69,17 @@ def extract(png: bytes, seed: bytes) -> bytes:
     head = np.packbits(flat[positions(seed, rgb.size, HEADER_BITS)] & 1).tobytes()
     n = int.from_bytes(head, "big")
     if n == 0 or n > (rgb.size - HEADER_BITS) // 8:
-        raise StegoError("Няма payload (грешен ключ за позиции или чист файл)")
+        raise StegoError("No payload (wrong position key or clean file)")
     pos = positions(seed, rgb.size, HEADER_BITS + 8 * n)
     return np.packbits(flat[pos[HEADER_BITS:]] & 1).tobytes()
 
 
 def embed_plain(png: bytes, payload: bytes) -> bytes:
-    """Последователен LSB (какъвто намират обикновени инструменти) - за decoy носители с honeytoken."""
+    """Sequential LSB (what ordinary tools find) - for decoy carriers with honeytoken."""
     mode, arr, rgb = _load(png)
     bits = np.unpackbits(np.frombuffer(payload, dtype=np.uint8))
     if len(bits) > rgb.size:
-        raise StegoError("Носителят е твърде малък")
+        raise StegoError("The carrier is too small")
     flat = rgb.reshape(-1)
     flat[:len(bits)] = (flat[:len(bits)] & 0xFE) | bits
     arr[..., :3] = flat.reshape(rgb.shape)
@@ -89,12 +89,12 @@ def embed_plain(png: bytes, payload: bytes) -> bytes:
 
 
 def wipe(png: bytes, seed: bytes) -> bytes:
-    """Презаписва старите payload позиции със случайни битове (унищожава старото шифротекст при ротация)."""
+    """Overwrites old payload positions with random bits (destroys old ciphertext during rotation)."""
     mode, arr, rgb = _load(png)
     flat = rgb.reshape(-1)
     n = int.from_bytes(np.packbits(flat[positions(seed, rgb.size, HEADER_BITS)] & 1).tobytes(), "big")
     if n == 0 or n > (rgb.size - HEADER_BITS) // 8:
-        raise StegoError("Няма payload за изтриване")
+        raise StegoError("No payload to delete")
     pos = positions(seed, rgb.size, HEADER_BITS + 8 * n)
     flat[pos] = (flat[pos] & 0xFE) | np.frombuffer(os.urandom(len(pos)), dtype=np.uint8) & 1
     arr[..., :3] = flat.reshape(rgb.shape)

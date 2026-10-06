@@ -15,10 +15,10 @@ def _client():
     except ImportError:
         print("[gcp] missing google-cloud-logging; skipped")
         return None
-    key = os.environ.get("GCP_SA_KEY_JSON")  # CI променлива със съдържанието на ключа (masked)
+    key = os.environ.get("GCP_SA_KEY_JSON")  # CI variable with the key content (masked)
     if key:
         return gcl.Client.from_service_account_info(json.loads(key), project=project)
-    return gcl.Client(project=project)  # иначе стандартните credentials
+    return gcl.Client(project=project)  # otherwise standard credentials
 
 
 def log_findings(findings, context=None, client=None):

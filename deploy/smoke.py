@@ -10,7 +10,7 @@ import urllib.request
 REQUIRED = ["DEMO_DB_PASSWORD", "DEMO_API_TOKEN"]
 missing = [n for n in REQUIRED if not os.environ.get(n)]
 if missing:
-    sys.exit(f"Липсват тайни: {missing}")
+    sys.exit(f"Missing secrets: {missing}")
 env = {**os.environ, "PORT": "18080"}
 srv = subprocess.Popen([sys.executable, "app/server.py"], env=env)
 try:
@@ -21,10 +21,10 @@ try:
         except Exception:
             time.sleep(0.2)
     else:
-        sys.exit("Приложението не стартира")
+        sys.exit("Application failed to start")
     assert sorted(data["secrets_loaded"]) == sorted(REQUIRED), data
-    print("Smoke OK: средата е вдигната със", len(data["secrets_loaded"]), "тайни (само имена):", data["secrets_loaded"])
-    # умишлен опит за изтичане: скруберът трябва да го скрие в логовете на pipeline-а
-    print("canary (трябва да е ***):", os.environ["DEMO_API_TOKEN"])
+    print("Smoke OK: environment up with", len(data["secrets_loaded"]), "secrets (names only):", data["secrets_loaded"])
+    # deliberate exfiltration attempt: the scrubber must hide it in the pipeline logs
+    print("canary (should be ***):", os.environ["DEMO_API_TOKEN"])
 finally:
     srv.terminate()

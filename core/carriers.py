@@ -1,6 +1,6 @@
-"""Авторизирани носители на Stego-Ops. PurrGuard НЕ бива заслепен от собствения си продукт:
-файл от манифеста е легитимен само ако SHA-256 съвпада с манифеста от ДОВЕРЕНА версия
-(при MR - тази от базовия комит, която MR не може да промени)."""
+"""Authorized Stego-Ops carriers. PurrGuard must NOT be blinded by its own product:
+a file from the manifest is legitimate only if its SHA-256 matches the manifest from a TRUSTED version
+(in an MR - the one from the base commit that the MR cannot change)."""
 import hashlib
 import json
 import os
@@ -43,7 +43,7 @@ class Carriers:
         self._trusted, self._local = idx(self.trusted), idx(self.local)
 
     def status(self, path):
-        """none | ok | resealed (съвпада само с манифеста от MR - иска преглед) | tampered"""
+        """none | ok | resealed (matches only the MR manifest - needs review) | tampered"""
         p = _norm(path)
         if p not in self._trusted and p not in self._local:
             return "none"
@@ -57,21 +57,21 @@ class Carriers:
     def file_finding(self, path, status):
         if status == "resealed":
             return finding("carrier_resealed", "MEDIUM",
-                           "Носител на Stego-Ops е презапечатан/добавен в този MR - изисква преглед от CODEOWNERS (манифестът е променен)")
+                           "Stego-Ops carrier is resealed/added in this MR - requires CODEOWNERS review (manifest changed)")
         if status == "tampered":
             return finding("carrier_tampered", "HIGH" if self.in_mr else "CRITICAL",
-                           "Носител на Stego-Ops не съвпада с НИТО един манифест (SHA-256) - подменен или модифициран файл")
+                           "Stego-Ops carrier does not match ANY manifest (SHA-256) - substituted or modified file")
         return None
 
     def manifest_finding(self):
         if self.in_mr and self._local != self._trusted:
             return finding("carrier_manifest", "MEDIUM",
-                           "Манифестът на Stego-Ops е променен в този MR (нови/сменени носители) - изисква преглед от CODEOWNERS")
+                           "Stego-Ops manifest has changed in this MR (new/changed carriers) - requires CODEOWNERS review")
         return None
 
 
 def historical_hashes(manifest_path=DEFAULT_MANIFEST):
-    """Всички SHA-256 от всички версии на манифеста - за да не се маркират стари законни носители в историята."""
+    """All SHA-256s from all manifest versions - so old legitimate carriers in history are not flagged."""
     out = set()
     revs = subprocess.run(["git", "log", "--all", "--format=%H", "--", manifest_path], capture_output=True).stdout.decode().split()
     for r in revs:

@@ -69,7 +69,7 @@ def seal(carrier_path, secrets: dict, provider, env="staging", ttl_days=30, out_
              "provider": provider.name, "locator": base64.b64encode(provider.wrap(seed, _aad(entry_id))).decode(),
              "payload_bytes": len(blob)}
     if getattr(provider, "key_name", None):
-        entry["kms_key"] = provider.key_name  # не е тайна
+        entry["kms_key"] = provider.key_name  # not a secret
     m = load_manifest(manifest_path)
     m["carriers"] = [e for e in m["carriers"] if e["id"] != entry_id] + [entry]
     save_manifest(m, manifest_path)
@@ -144,7 +144,7 @@ def run_with_secrets(secrets: dict, cmd, scrub=True, log_path=None, report_path=
     if log:
         log.close()
     if report_path:
-        from core.analyzers import SECRET_RE  # същите шаблони като PurrGuard
+        from core.analyzers import SECRET_RE  # same patterns as PurrGuard
         residual = len(SECRET_RE.findall(open(log_path, "rb").read())) if log_path else 0
         json.dump({"exit_code": rc, "secrets_loaded": sorted(secrets), "scrubbed_occurrences": scrubber.hits,
                    "residual_secret_patterns_in_log": residual, "verdict": "clean" if residual == 0 else "leak",
@@ -153,8 +153,8 @@ def run_with_secrets(secrets: dict, cmd, scrub=True, log_path=None, report_path=
 
 
 def make_decoy(carrier_path, honeytoken_value: str, out_path=None):
-    """Decoy носител: последователен LSB с honeytoken (какъвто намират обикновени инструменти като zsteg)."""
+    """Decoy carrier: sequential LSB with honeytoken (what ordinary tools like zsteg find)."""
     out_path = out_path or carrier_path
-    data = lsb.embed_plain(open(carrier_path, "rb").read(), honeytoken_value.encode())  # първо четем, после пишем
+    data = lsb.embed_plain(open(carrier_path, "rb").read(), honeytoken_value.encode())  # read first, then write
     open(out_path, "wb").write(data)
     return out_path

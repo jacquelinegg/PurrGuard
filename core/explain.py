@@ -20,7 +20,7 @@ HINTS = {
 
 def _mask(b, keep=6):
     t = "".join(chr(c) if 32 <= c < 127 else "." for c in b)
-    return f"{t[:keep]}••• ({len(b)} B, останалото е скрито)"
+    return f"{t[:keep]}••• ({len(b)} B, the rest is hidden)"
 
 
 def _evidence(path, data, f):
@@ -34,7 +34,7 @@ def _evidence(path, data, f):
         extra = data[i:].strip(b' \x00\r\n')
         out.append(f"Extra data from byte {i}: hex {data[i:i + 16].hex(' ')} | text {_mask(extra)}")
     elif a == "png_chunks":
-        m, pos = re.search(r"чънк (\w{4})", f["detail"]), 8
+        m, pos = re.search(r"chunk (\w{4})", f["detail"]), 8
         while m and pos + 8 <= len(data):
             ln, ct = struct.unpack(">I4s", data[pos:pos + 8])
             if ct.decode("latin1") == m.group(1):
@@ -46,7 +46,7 @@ def _evidence(path, data, f):
         for n, line in enumerate(text.splitlines(), 1):
             for c, ch in enumerate(line, 1):
                 if ch in A.ZW_CHARS:
-                    hits.append(f"ред {n}, колона {c}: U+{ord(ch):04X}")
+                    hits.append(f"line {n}, column {c}: U+{ord(ch):04X}")
         out.append(f"First positions: {'; '.join(hits[:4])} ({len(hits)} total). On screen the line looks normal.")
     elif a == "chi_square_lsb":
         out.append(f"p-value {A.lsb_score_png(path):.3f}. Natural images are usually close to 0.")

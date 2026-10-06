@@ -1,4 +1,4 @@
-"""Чете тайните от средата (подадени от stegoops exec) и ги записва в GCP Secret Manager. Не се тества тук."""
+"""Reads secrets from the environment (provided by stegoops exec) and writes them to GCP Secret Manager. Not tested here."""
 import os
 
 from google.cloud import secretmanager
@@ -12,4 +12,4 @@ for env_name, sid in (("DEMO_DB_PASSWORD", "demo-db-password"), ("DEMO_API_TOKEN
     except Exception:
         c.create_secret(request={"parent": parent, "secret_id": sid, "secret": {"replication": {"automatic": {}}}})
     c.add_secret_version(request={"parent": name, "payload": {"data": os.environ[env_name].encode()}})
-    print("Secret Manager обновен:", sid)
+    print("Secret Manager updated:", sid)

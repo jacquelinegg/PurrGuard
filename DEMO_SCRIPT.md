@@ -1,12 +1,12 @@
-# Демо сценарий (под 3 минути) — Hands-off цикълът
+# Demo script (under 3 minutes) — Hands-off cycle
 
-Подготви предварително: свеж проект, `rotate --ttl-days 3` вече комитнат (SETUP.md стъпка 6), отворен таб с Pipelines. Без музика и чужди марки.
+Prepare beforehand: fresh project, `rotate --ttl-days 3` already committed (SETUP.md step 6), open tab with Pipelines. No music and no third-party branding.
 
-1. **0:00 Проблемът (15 с).** „Агентите четат репото и логовете. Тайните изтичат и изтичат срокове."
-2. **0:15 Запечатване (20 с).** Покажи `logo.png` преди/след (визуално еднакви), `strings logo.png | grep -i token` → нищо. „Сигурността е AES-GCM + ключ; картинката е камуфлаж."
-3. **0:35 Защитата (25 с).** MR с подменен лого → `purrguard-mr` пада (`carrier_tampered`).
-4. **1:00 Пускаш цикъла (10 с).** Run pipeline на `main`. „От тук нищо не пипам."
-5. **1:10 Ротация (35 с).** `expiry-watch` → issue; `rotate-secrets` (единствената с ключ) → MR `stegoops/rotate-…`; `rotation-guard` + PurrGuard зелени → сам се слива.
-6. **1:45 Деплой (30 с).** `build-app` → `deploy-staging`: в лога `canary: ***`, `leak_audit.json` → `clean`. После `deploy-cloudrun` и отваряш публичния URL.
-7. **2:15 Агентът (30 с).** Deploy Sentinel (от pipeline събитие) → бележка в issue-то: тайни (само имена), 0 изтичания. „Агентът не е виждал нито ключа, нито суровите логове."
-8. **2:45 Честност (10 с).** „Агентите проверяват и отчитат; привилегированите стъпки са детерминиран CI."
+1. **0:00 The problem (15 s).** "Agents read the repo and logs. Secrets leak and expirations leak."
+2. **0:15 Sealing (20 s).** Show `logo.png` before/after (visually identical), `strings logo.png | grep -i token` → nothing. "Security is AES-GCM + key; the image is camouflage."
+3. **0:35 Protection (25 s).** MR with replaced logo → `purrguard-mr` fails (`carrier_tampered`).
+4. **1:00 Start the cycle (10 s).** Run pipeline on `main`. "From here I don't touch anything."
+5. **1:10 Rotation (35 s).** `expiry-watch` → issue; `rotate-secrets` (the only one with the key) → MR `stegoops/rotate-…`; `rotation-guard` + PurrGuard green → merges automatically.
+6. **1:45 Deploy (30 s).** `build-app` → `deploy-staging`: in the logs `canary: ***`, `leak_audit.json` → `clean`. Then `deploy-cloudrun` and open the public URL.
+7. **2:15 The agent (30 s).** Deploy Sentinel (from pipeline event) → note in the issue: secrets (names only), 0 exfiltrations. "The agent has seen neither the key nor the raw logs."
+8. **2:45 Honesty (10 s).** "Agents verify and report; privileged steps are deterministic CI."

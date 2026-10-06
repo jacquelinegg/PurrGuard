@@ -25,23 +25,27 @@ def compare(files, base=None):
             continue
         old = _old_version(base, f)
         if not old:
-            continue  # нов файл: няма с какво да се сравни
+            continue  # new file: nothing to compare
         new = open(f, "rb").read()
         try:
             io_old, io_new = Image.open(io.BytesIO(old)), Image.open(f)
             if io_old.size != io_new.size:
-                continue  # легитимна смяна на изображението
+                continue  # legitimate image change
             ratio = len(new) / max(len(old), 1)
-            with tempfile.NamedTemporaryFile(suffix=".png") as t:
-                t.write(old); t.flush()
-                old_p, new_p = A.lsb_score_png(t.name), A.lsb_score_png(f)
+            fd, tmp = tempfile.mkstemp(suffix=".png")
+            try:
+                os.write(fd, old)
+                os.close(fd)
+                old_p, new_p = A.lsb_score_png(tmp), A.lsb_score_png(f)
+            finally:
+                os.unlink(tmp)
         except Exception:
             continue
         if ratio > 1.3:
             out.append({"file": f, **A.finding("baseline_size", "MEDIUM",
-                        f"Същите размери, но файлът е нараснал {int((ratio - 1) * 100)}% спрямо основния клон "
-                        "(шум в пикселите се компресира лошо)", ratio)})
+                        "Same dimensions, but file grew {}% vs base (pixel noise compresses poorly)".format(int((ratio - 1) * 100)),
+                        ratio)})
         if new_p - old_p > 0.3 and new_p > 0.3:
             out.append({"file": f, **A.finding("baseline_lsb_shift", "HIGH",
-                        f"LSB статистиката се е променила рязко спрямо основния клон ({old_p:.2f} → {new_p:.2f})", new_p)})
+                        "LSB distribution changed sharply vs base ({} → {})".format(old_p, new_p), new_p)})
     return out

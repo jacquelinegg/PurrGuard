@@ -34,34 +34,39 @@ bad = ["chunk.png", "migration.sql", "stego.wav", "stego_lsb.png", "trailing.png
 good = ["clean.png", "clean.sql", "clean.wav"]
 res = engine.run([S + f for f in bad + good], cfg)
 flagged = {r["file"] for r in res["findings"]}
-check("всички 5 заразени файла са хванати", all(S + f in flagged for f in bad))
-check("0 фалшиви тревоги върху 3 чисти файла", not any(S + f in flagged for f in good))
+check("all 5 infected files are caught", all(S + f in flagged for f in bad))
+check("0 false positives on 3 clean files", not any(S + f in flagged for f in good))
 
 # обезвреждане: изчистеният файл вече не дава находки
 fixed = fixer.build_fixes(res["findings"], outdir="fixed_out")
-check("всички заразени файлове са изчистени", len(fixed) == len(bad))
+check("all infected files are sanitized", len(fixed) == len(bad))
 res2 = engine.run(["fixed_out/" + S + f for f in bad], cfg)
-check("след изчистване няма находки", not res2["findings"])
+check("no findings after sanitization", not res2["findings"])
 
 # ротация
 pb = rotation.playbook(res["findings"])
-check("план за ротация на AWS ключ", "update-access-key" in pb)
+check("AWS key rotation playbook", "update-access-key" in pb)
 sa = b'{"type": "service_account", "private_key_id": "' + b"a" * 40 + b'", "client_email": "x@p.iam.gserviceaccount.com", "k": "api_key=ABCDEFGH12345"}'
 pb2 = rotation.playbook([{"secrets": A.classify_secret(sa)}])
 check("GCP: gcloud iam service-accounts keys disable", "gcloud iam service-accounts keys disable " + "a" * 40 in pb2)
 
 # сравнение с основния клон + история
-subprocess.run("git init -q . && git config user.email a@b && git config user.name t", shell=True)
+subprocess.run(["git", "init", "-q", "."])
+subprocess.run(["git", "config", "user.email", "a@b"])
+subprocess.run(["git", "config", "user.name", "t"])
 shutil.copy(S + "clean.png", "logo.png")
-subprocess.run("git add logo.png && git commit -qm base", shell=True)
-base = subprocess.run("git rev-parse HEAD", shell=True, capture_output=True, text=True).stdout.strip()
+subprocess.run(["git", "add", "logo.png"])
+subprocess.run(["git", "commit", "-qm", "base"])
+base = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
 shutil.copy(S + "stego_lsb.png", "logo.png")
-subprocess.run("git add logo.png && git commit -qm 'new logo'", shell=True)
+subprocess.run(["git", "add", "logo.png"])
+subprocess.run(["git", "commit", "-qm", "new logo"])
 bl = baseline.compare(["logo.png"], base=base)
-check("сравнение с основния клон засича промяната", {f["analyzer"] for f in bl} >= {"baseline_size"})
-subprocess.run("git rm -q logo.png && git commit -qm remove", shell=True)
+check("baseline comparison detects change", {f["analyzer"] for f in bl} >= {"baseline_size"})
+subprocess.run(["git", "rm", "-q", "logo.png"])
+subprocess.run(["git", "commit", "-qm", "remove"])
 h = history.scan_history(cfg)
-check("историята намира изтрит заразен файл", any(f["file"] == "logo.png" for f in h["findings"]))
+check("history finds deleted infected file", any(f["file"] == "logo.png" for f in h["findings"]))
 
 # --- демо файлове ---
 subprocess.run([sys.executable, os.path.join(ROOT, "tests", "make_demo.py")], check=True, capture_output=True)
@@ -70,8 +75,8 @@ dflag = {os.path.basename(f["file"]) for f in dres["findings"]}
 infected = {"02_logo_infected_lsb.png", "03_logo_infected_trailing.png", "04_logo_infected_chunk.png", "06_photo_infected.jpg",
             "08_report_infected.pdf", "10_users_infected.sql", "12_audio_infected.wav"}
 clean = {"01_logo_clean.png", "05_photo_clean.jpg", "07_report_clean.pdf", "09_users_clean.sql", "11_audio_clean.wav"}
-check("всички 7 заразени демо файла са хванати", infected <= dflag)
-check("всички 5 чисти демо файла са чисти", not (clean & dflag))
+check("all 7 infected demo files are caught", infected <= dflag)
+check("all 5 clean demo files are clean", not (clean & dflag))
 from core.explain import explain
 ex = explain("demo_files/08_report_infected.pdf")
 check("explain shows evidence and independent verification", "EmbeddedFile" in ex and "Verify independently" in ex and "AKIAFAKE" not in ex)
@@ -80,8 +85,8 @@ from core import honeytokens as H
 import re, numpy as np
 from PIL import Image
 made = H.init(".", "demo-proj")
-check("създадени 4 примамки", len(made) == 4)
-check("регистърът пази само хешове", "AKIA" not in open(H.DEFAULT_FILE).read())
+check("created 4 baits", len(made) == 4)
+check("registry stores only hashes", "AKIA" not in open(H.DEFAULT_FILE).read())
 tok = re.search(r"AKIA[0-9A-Z]{16}", open(".env.backup").read()).group().encode()
 arr = np.array(Image.open(S + "clean.png").convert("RGB")); flat = arr[:, :, 0].ravel()
 bits = np.unpackbits(np.frombuffer(tok, dtype=np.uint8)); flat[:len(bits)] = (flat[:len(bits)] & 0xFE) | bits
@@ -91,12 +96,12 @@ open("zw_token.sql", "w", encoding="utf-8").write("-- ok" + "".join("\u200c" if 
 open("notes_token.txt", "wb").write(b"temp: " + tok)
 hres = engine.run(["lsb_token.png", "tail_token.png", "zw_token.sql", "notes_token.txt", ".env.backup", "config/legacy-credentials.json", S + "clean.png"], cfg)
 hit = {f["file"] for f in hres["findings"] if f["analyzer"] == "honeytoken"}
-check("примамка скрита в LSB на PNG", "lsb_token.png" in hit)
-check("примамка след края на PNG", "tail_token.png" in hit)
-check("примамка в невидими Unicode символи", "zw_token.sql" in hit)
-check("примамка копирана в обикновен файл", "notes_token.txt" in hit)
-check("самите примамки и чистите файлове не алармират", not ({".env.backup", "config/legacy-credentials.json", S + "clean.png"} & hit))
-check("находката не разкрива стойността на примамката", tok.decode() not in str(hres["findings"]))
+check("honeytoken hidden in PNG LSB", "lsb_token.png" in hit)
+check("honeytoken after PNG end", "tail_token.png" in hit)
+check("honeytoken in invisible Unicode chars", "zw_token.sql" in hit)
+check("honeytoken copied to ordinary file", "notes_token.txt" in hit)
+check("baits and clean files do not trigger", not ({".env.backup", "config/legacy-credentials.json", S + "clean.png"} & hit))
+check("finding does not reveal bait value", tok.decode() not in str(hres["findings"]))
 
 class FakeLogger:
     def __init__(self): self.rows = []
@@ -107,10 +112,10 @@ class FakeClient:
 from integrations import gcp_logging
 fc = FakeClient()
 sent = gcp_logging.log_findings(res["findings"], {"project": "demo"}, client=fc)
-check("Cloud Logging получава всички находки", sent == len(res["findings"]))
-check("нивата са преведени (CRITICAL/ERROR)", {s for _, s in fc.lg.rows} <= {"CRITICAL", "ERROR", "WARNING"} and any(s == "CRITICAL" for _, s in fc.lg.rows))
-check("в логовете няма тайни", "AKIAFAKE" not in str(fc.lg.rows))
+check("Cloud Logging receives all findings", sent == len(res["findings"]))
+check("severities mapped (CRITICAL/ERROR)", {s for _, s in fc.lg.rows} <= {"CRITICAL", "ERROR", "WARNING"} and any(s == "CRITICAL" for _, s in fc.lg.rows))
+check("no secrets in logs", "AKIAFAKE" not in str(fc.lg.rows))
 page = generate("public")
-check("таблото е генерирано", "PurrGuard" in open(page, encoding="utf-8").read())
+check("dashboard is generated", "PurrGuard" in open(page, encoding="utf-8").read())
 print("\nВСИЧКО МИНАВА" if ok else "\nИМА ГРЕШКИ")
 sys.exit(0 if ok else 1)

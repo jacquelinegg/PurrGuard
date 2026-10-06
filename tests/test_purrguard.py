@@ -84,6 +84,9 @@ check("explain shows evidence and independent verification", "EmbeddedFile" in e
 from core import honeytokens as H
 import re, numpy as np
 from PIL import Image
+for p in [".env.backup", "config/legacy-credentials.json", "config/maps_api.txt", "scripts/.deploy-token", H.DEFAULT_FILE]:
+    if os.path.exists(p):
+        os.remove(p) if os.path.isfile(p) else shutil.rmtree(p)
 made = H.init(".", "demo-proj")
 check("created 4 baits", len(made) == 4)
 check("registry stores only hashes", "AKIA" not in open(H.DEFAULT_FILE).read())

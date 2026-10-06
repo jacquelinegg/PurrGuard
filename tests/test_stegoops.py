@@ -167,7 +167,7 @@ os.environ.pop("CI_MERGE_REQUEST_DIFF_BASE_SHA")
 # --- decoy + honeytoken ---
 clean2 = "decoy.png"; Image.open(io.BytesIO(clean)).save(clean2)
 r = subprocess.run([sys.executable, "-m", "stegoops", "decoy", "--carrier", clean2], capture_output=True, text=True, env={**os.environ, "PYTHONPATH": ROOT})
-check("decoy: създаден и регистриран", "Decoy носител" in r.stdout and os.path.exists(".purrguard_honey.json"))
+check("decoy: created and registered", "Decoy carrier" in r.stdout and os.path.exists(".purrguard_honey.json"))
 tok = None
 a = np.packbits(np.array(Image.open(clean2).convert("RGB")).reshape(-1)[:160] & 1).tobytes()
 import re

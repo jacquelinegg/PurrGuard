@@ -156,7 +156,7 @@ check("MCP: непознат инструмент -> JSON-RPC грешка", rs[
 
 # --- структура на flows и CI ---
 for f in ("stegoops-deploy-sentinel", "stegoops-mr-guardian"):
-    d = yaml.safe_load(open(f"{ROOT}/duo/flows/{f}.yaml"))
+    d = yaml.safe_load(open(f"{ROOT}/duo/flows/{f}.yaml", encoding="utf-8"))
     comps = {c["name"]: c for c in d["components"]}
     prompts = {p["prompt_id"] for p in d["prompts"]}
     schemas = {s["schema_id"]: set(s["definition"]["properties"]) for s in d["response_schemas"]}
@@ -178,7 +178,7 @@ for f in ("stegoops-deploy-sentinel", "stegoops-mr-guardian"):
     check(f"flow {f}: всички prompt/input/route референции съществуват", not bad)
     if bad:
         print("   ", bad)
-ci = yaml.safe_load(open(f"{ROOT}/.gitlab-ci.yml"))
+    ci = yaml.safe_load(open(f"{ROOT}/.gitlab-ci.yml", encoding="utf-8"))
 jobs = {k: v for k, v in ci.items() if isinstance(v, dict) and "stage" in v}
 check("CI: всички етапи на задачите са декларирани", all(j["stage"] in ci["stages"] for j in jobs.values()))
 check("CI: needs сочат към съществуващи задачи", all(n in jobs for j in jobs.values() for n in j.get("needs", [])))

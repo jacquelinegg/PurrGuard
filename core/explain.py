@@ -31,7 +31,8 @@ def _evidence(path, data, f):
         else:
             i = data.rfind(b"\xff\xd9") + 2
         out.append(f"Image end marker at byte {i}, file length {len(data)} bytes.")
-        out.append(f"Extra data from byte {i}: hex {data[i:i + 16].hex(' ')} | text {_mask(data[i:].strip(b' \\x00\\r\\n'))}")
+        extra = data[i:].strip(b' \x00\r\n')
+        out.append(f"Extra data from byte {i}: hex {data[i:i + 16].hex(' ')} | text {_mask(extra)}")
     elif a == "png_chunks":
         m, pos = re.search(r"чънк (\w{4})", f["detail"]), 8
         while m and pos + 8 <= len(data):

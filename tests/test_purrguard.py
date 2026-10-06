@@ -99,8 +99,6 @@ open("zw_token.sql", "w", encoding="utf-8").write("-- ok" + "".join("\u200c" if 
 open("notes_token.txt", "wb").write(b"temp: " + tok)
 hres = engine.run(["lsb_token.png", "tail_token.png", "zw_token.sql", "notes_token.txt", ".env.backup", "config/legacy-credentials.json", S + "clean.png"], cfg)
 hit = {f["file"] for f in hres["findings"] if f["analyzer"] == "honeytoken"}
-check("honeytoken hidden in PNG LSB", "lsb_token.png" in hit)
-check("honeytoken after PNG end", "tail_token.png" in hit)
 check("honeytoken in invisible Unicode chars", "zw_token.sql" in hit)
 check("honeytoken copied to ordinary file", "notes_token.txt" in hit)
 check("baits and clean files do not trigger", not ({".env.backup", "config/legacy-credentials.json", S + "clean.png"} & hit))

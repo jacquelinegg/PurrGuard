@@ -7,3 +7,14 @@ scan_results.json
 history_results.json
 .purrguard_log/
 public/
+# Local test artifacts
+.env.backup
+.purrguard_honey.json
+.purrguard_log/
+config/
+scripts/
+lsb_token.png
+notes_token.txt
+tail_token.png
+zw_token.sql
+tests/samples/

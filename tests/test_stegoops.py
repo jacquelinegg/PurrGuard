@@ -171,7 +171,7 @@ check("decoy: created and registered", "Decoy carrier" in r.stdout and os.path.e
 tok = None
 a = np.packbits(np.array(Image.open(clean2).convert("RGB")).reshape(-1)[:160] & 1).tobytes()
 import re
-m = re.search(rb"AKIA[0-9A-Z]{16}", a); tok = m.group() if m else None
+m = re.search(rb"AKIA[0-9A-Z]{16,}", a); tok = m.group() if m else None
 check("decoy: обикновен LSB четец намира примамката (капанът е примамлив)", tok is not None)
 open("exfil.txt", "wb").write(b"copied: " + tok)
 res = engine.run(["decoy.png", "exfil.txt"], engine.load_config())

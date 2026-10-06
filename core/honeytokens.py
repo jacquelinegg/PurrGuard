@@ -14,7 +14,7 @@ from PIL import Image
 from .analyzers import PNG_SIG, ZW_CHARS, finding
 
 DEFAULT_FILE = ".purrguard_honey.json"
-CANDIDATES = [re.compile(p) for p in (rb"AKIA[0-9A-Z]{16}", rb"AIza[0-9A-Za-z_\-]{35}", rb"\b[0-9a-f]{40}\b", rb"glpat-[0-9A-Za-z_\-]{20}")]
+CANDIDATES = [re.compile(p) for p in (rb"AKIA[0-9A-Z]{16,}", rb"AIza[0-9A-Za-z_\-]{35}", rb"\b[0-9a-f]{40}\b", rb"glpat-[0-9A-Za-z_\-]{20}")]
 UP, DIG, ALNUM = string.ascii_uppercase, string.digits, string.ascii_letters + string.digits
 _cache = {}
 

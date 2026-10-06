@@ -15,7 +15,7 @@ TEXT_CHUNKS = {b"tEXt", b"zTXt", b"iTXt"}
 ZW_CHARS = "\u200b\u200c\u200d\u2060\ufeff"
 ZW_RE = re.compile(f"[{ZW_CHARS}]")
 SECRET_RE = re.compile(
-    rb"(AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_\-]{35}|glpat-[0-9A-Za-z_\-]{20}|"
+    rb"(AKIA[0-9A-Z]{16,}|AIza[0-9A-Za-z_\-]{35}|glpat-[0-9A-Za-z_\-]{20}|"
     rb"sk-ant-[0-9A-Za-z_\-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|"
     rb"(?i:(?:api[_-]?key|secret|password|token)\s*[=:]\s*\S{8,}))")
 

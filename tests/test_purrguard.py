@@ -87,7 +87,7 @@ from PIL import Image
 made = H.init(".", "demo-proj")
 check("created 4 baits", len(made) == 4)
 check("registry stores only hashes", "AKIA" not in open(H.DEFAULT_FILE).read())
-tok = re.search(r"AKIA[0-9A-Z]{16}", open(".env.backup").read()).group().encode()
+tok = re.search(r"AWS_ACCESS_KEY_ID=(AKIA[0-9A-Z]+)", open(".env.backup").read()).group(1).encode()
 arr = np.array(Image.open(S + "clean.png").convert("RGB")); flat = arr[:, :, 0].ravel()
 bits = np.unpackbits(np.frombuffer(tok, dtype=np.uint8)); flat[:len(bits)] = (flat[:len(bits)] & 0xFE) | bits
 arr[:, :, 0] = flat.reshape(arr.shape[:2]); Image.fromarray(arr).save("lsb_token.png")

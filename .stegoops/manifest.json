@@ -1,1 +1,20 @@
-{"carriers": [], "version": 1}
+{
+  "carriers": [
+    {
+      "created": "2026-10-06T15:24:27+00:00",
+      "env": "staging",
+      "expires_at": "2026-11-05T15:24:27+00:00",
+      "id": "staging:app\\assets\\logo.png",
+      "locator": "aUivk9HROsqk2FLc3xOlaPFrTrgxkNvYFXrn6zYjHlm9/U1g+z3zUqF4qa+/EYkYTeRsEkVdwiH+CUMD",
+      "names": [
+        "DEMO_API_TOKEN",
+        "DEMO_DB_PASSWORD"
+      ],
+      "path": "app\\assets\\logo.png",
+      "payload_bytes": 273,
+      "provider": "env",
+      "sha256": "dad9c664de756607657ec428490b19ee00c2dc553fb3c50594c6a0b3bd0f8d5f"
+    }
+  ],
+  "version": 1
+}

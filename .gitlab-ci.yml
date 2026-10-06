@@ -115,7 +115,7 @@ deploy-staging:
     - cat leak_audit.json
   artifacts:
     when: always
-      paths: [leak_audit.json]      # counters and names only - read by Duo agent; deploy.log is NOT published
+    paths: [leak_audit.json]      # counters and names only - read by Duo agent; deploy.log is NOT published
 
 # Optional: Google Cloud Run (requires GCP_PROJECT_ID + GCP_SA_KEY; see SETUP.md). Provides a public URL for the jury.
 deploy-cloudrun:

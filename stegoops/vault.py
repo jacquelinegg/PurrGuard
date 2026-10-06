@@ -97,7 +97,7 @@ def verify(manifest_path=MANIFEST):
     problems = []
     for e in load_manifest(manifest_path)["carriers"]:
         if not os.path.isfile(e["path"]):
-        problems.append(f"{e['path']}: file missing")
+            problems.append(f"{e['path']}: file missing")
             continue
         if _sha(open(e["path"], "rb").read()) != e["sha256"]:
             problems.append(f"{e['path']}: SHA-256 does not match manifest")

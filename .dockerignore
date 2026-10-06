@@ -1,0 +1,11 @@
+.git
+__pycache__
+*.pyc
+demo_files
+tests/samples
+public
+fixed_out
+purrguard_fixed
+scan_results.json
+history_results.json
+.purrguard_log

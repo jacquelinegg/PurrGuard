@@ -1,0 +1,3 @@
+# По избор: директни Anthropic заявки (PURRGUARD_MOCK=0) и Cloud Logging. CI ги НЕ инсталира по подразбиране.
+anthropic
+google-cloud-logging

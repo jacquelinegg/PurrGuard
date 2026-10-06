@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "purrguard": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "stegoops.mcp_server"]
+    }
+  }
+}

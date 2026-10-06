@@ -1,0 +1,193 @@
+# Flow 1 - SUPERVISED: one human approval gate. Triggered by mention/assign on MR.
+# Създава се в проекта: AI > Flows > New flow > Configuration (постави съдържанието). Задействане: mention/assign на MR.
+name: "Stego-Ops MR Guardian"
+description: "Scans MR for hidden exfiltration and tampered carriers, proposes cleanup and rotation, acts after one approval."
+version: "v1"
+environment: ambient
+
+components:
+  - name: "scanner"
+    type: AgentComponent
+    prompt_id: "scanner_prompt"
+    inputs:
+      - from: "context:goal"
+        as: "mr_link"
+      - from: "context:project_id"
+        as: "project_id"
+    toolset: ["get_merge_request", "run_command", "read_file", "list_dir"]
+    response_schema_id: "scan_verdict"
+    ui_log_events: ["on_tool_execution_success", "on_tool_execution_failed"]
+
+  - name: "remediation_planner"
+    type: AgentComponent
+    prompt_id: "planner_prompt"
+    inputs:
+      - from: "context:project_id"
+        as: "project_id"
+      - from: "context:scanner.final_answer.summary"
+        as: "summary"
+      - from: "context:scanner.final_answer.files"
+        as: "files"
+    toolset: ["read_file", "run_command"]
+    ui_log_events: ["on_agent_final_answer", "on_tool_execution_failed"]
+
+  - name: "approval_gate"
+    type: HumanInputComponent
+    sends_response_to: "remediation_planner"
+    interaction_type: "approval"
+    message_template: |
+      PurrGuard откри заплаха. Агентът предлага изчистване на засегнатите файлове и план за ротация.
+      - Approve: изчисти файловете в нов fix MR и публикувай плана
+      - Modify: напиши какво да се промени
+      - Reject: само публикувай доклад, без промени
+    ui_log_events: ["on_user_input_prompt", "on_user_response"]
+
+  - name: "executor"
+    type: AgentComponent
+    prompt_id: "executor_prompt"
+    inputs:
+      - from: "context:project_id"
+        as: "project_id"
+      - from: "context:goal"
+        as: "mr_link"
+      - from: "context:remediation_planner.final_answer"
+        as: "plan"
+      - from: "context:scanner.final_answer.files"
+        as: "files"
+    toolset: ["run_command", "create_branch", "create_commit", "create_merge_request", "create_merge_request_note"]
+    ui_log_events: ["on_agent_final_answer", "on_tool_execution_failed"]
+
+  - name: "reporter"
+    type: AgentComponent
+    prompt_id: "reporter_prompt"
+    inputs:
+      - from: "context:project_id"
+        as: "project_id"
+      - from: "context:goal"
+        as: "mr_link"
+      - from: "context:scanner.final_answer.verdict"
+        as: "verdict"
+      - from: "context:scanner.final_answer.summary"
+        as: "summary"
+    toolset: ["create_merge_request_note"]
+    ui_log_events: ["on_agent_final_answer", "on_tool_execution_failed"]
+
+routers:
+  - from: "scanner"
+    condition:
+      input: "context:scanner.final_answer.verdict"
+      routes:
+        "threat": "remediation_planner"
+        "needs_review": "reporter"
+        "clean": "reporter"
+        "default_route": "reporter"
+  - from: "remediation_planner"
+    to: "approval_gate"
+  - from: "approval_gate"
+    condition:
+      input: "context:approval_gate.approval"
+      routes:
+        "approve": "executor"
+        "modify": "remediation_planner"
+        "reject": "reporter"
+        "default_route": "reporter"
+  - from: "executor"
+    to: "end"
+  - from: "reporter"
+    to: "end"
+
+flow:
+  entry_point: "scanner"
+
+response_schemas:
+  - schema_id: "scan_verdict"
+    definition:
+      "$schema": "http://json-schema.org/draft-07/schema#"
+      title: "scan_verdict_response"
+      type: object
+      properties:
+        verdict:
+          type: string
+          enum: ["clean", "needs_review", "threat"]
+          description: "clean = no findings; needs_review = MEDIUM/manifest review; threat = HIGH/CRITICAL"
+        summary:
+          type: string
+          description: "Short finding summary. File names and types only, never secret values."
+        files:
+          type: string
+          description: "Affected files separated by spaces (empty if none)"
+      required: [verdict, summary, files]
+
+prompts:
+  - prompt_id: "scanner_prompt"
+    name: "Scanner"
+    unit_primitives: []
+    prompt_template:
+      system: |
+        Security agent. Run scanner and classify.
+        1. Get MR source branch. Fetch/checkout if needed.
+        2. Run: PURRGUARD_MOCK=1 python main.py ; then: python -m stegoops verify
+        3. Read scan_results.json. Classify: threat for HIGH/CRITICAL; needs_review for carrier_resealed/carrier_manifest changes; else clean.
+        Never print or quote secret values. Do not open Stego-Ops carriers (no key - intentional).
+        Return structured verdict when ready.
+      user: |
+        Project ID: {{ project_id }}
+        Merge request: {{ mr_link }}
+      placeholder: history
+    params:
+      timeout: 300
+
+  - prompt_id: "planner_prompt"
+    name: "Remediation planner"
+    unit_primitives: []
+    prompt_template:
+      system: |
+        Incident response agent. Propose a plan (do not execute):
+        - Files to sanitize: python main.py sanitize <files> (authorized carriers auto-skipped)
+        - Secrets to rotate: from scan_results.json secrets field and README rotation section
+        - Whether STEGOOPS_KEK rotation is needed (only if carrier swapped or manifest compromised)
+        Never quote secret values. Include human feedback if present.
+        Return short numbered plan when ready.
+      user: |
+        Project ID: {{ project_id }}
+        Резюме: {{ summary }}
+        Засегнати файлове: {{ files }}
+      placeholder: history
+    params:
+      timeout: 240
+
+  - prompt_id: "executor_prompt"
+    name: "Executor"
+    unit_primitives: []
+    prompt_template:
+      system: |
+        Execute approved plan.
+        1. Sanitize affected files.
+        2. Create branch purrguard/fix-<id>, commit cleaned files, open MR to source branch.
+        3. Note original MR with plan and link to fix MR.
+        Do not merge. Do not mention secret values. Return fix MR link when done.
+      user: |
+        Project ID: {{ project_id }}
+        Оригинален MR: {{ mr_link }}
+        Одобрен план: {{ plan }}
+        Файлове: {{ files }}
+      placeholder: history
+    params:
+      timeout: 300
+
+  - prompt_id: "reporter_prompt"
+    name: "Reporter"
+    unit_primitives: []
+    prompt_template:
+      system: |
+        Post short report to MR: verdict, findings (files and types only), next steps.
+        If clean, state no findings. Do not include secret values.
+        Return confirmation when posted.
+      user: |
+        Project ID: {{ project_id }}
+        Merge request: {{ mr_link }}
+        Вердикт: {{ verdict }}
+        Резюме: {{ summary }}
+      placeholder: history
+    params:
+      timeout: 180

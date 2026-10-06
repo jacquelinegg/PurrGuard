@@ -1,0 +1,6 @@
+# Промяна на манифеста или носителите = промяна на това, което се счита за доверено. Изисква одобрение.
+/.stegoops/ @security-owners
+/app/assets/ @security-owners
+/duo/ @security-owners
+/.gitlab-ci.yml @security-owners
+/.gitlab/duo/ @security-owners

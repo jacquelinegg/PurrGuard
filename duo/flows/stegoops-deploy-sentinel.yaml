@@ -1,0 +1,197 @@
+# Flow 2 - HANDS-OFF: no human gate. Triggered by pipeline events or issue mention.
+# Агентът НЕ държи тайни и не чете сурови логове: чете само детерминирания одит leak_audit.json, който деплой задачата публикува.
+# Привилегированите действия (ротация, merge) са в CI (rotate-secrets + auto-merge); агентите ПРОВЕРЯВАТ и ОТЧИТАТ.
+name: "Stego-Ops Deploy Sentinel"
+description: "After each main-branch pipeline: checks readiness (manifest, expiry, deploy job), reads leak audit, and reports; opens rotation issue on leak."
+version: "v1"
+environment: ambient
+
+components:
+  - name: "preflight"
+    type: AgentComponent
+    prompt_id: "preflight_prompt"
+    model_size_preference: "small"
+    inputs:
+      - from: "context:goal"
+        as: "trigger"
+      - from: "context:project_id"
+        as: "project_id"
+    toolset: ["get_issue", "run_command", "gitlab_api_get"]
+    response_schema_id: "preflight_result"
+    ui_log_events: ["on_tool_execution_success", "on_tool_execution_failed"]
+
+  - name: "leak_auditor"
+    type: AgentComponent
+    prompt_id: "auditor_prompt"
+    model_size_preference: "small"
+    inputs:
+      - from: "context:project_id"
+        as: "project_id"
+      - from: "context:preflight.final_answer.deploy_job_id"
+        as: "job_id"
+    toolset: ["gitlab_api_get"]
+    response_schema_id: "audit_result"
+    ui_log_events: ["on_tool_execution_success", "on_tool_execution_failed"]
+
+  - name: "reporter_blocked"
+    type: AgentComponent
+    prompt_id: "blocked_reporter_prompt"
+    model_size_preference: "small"
+    inputs:
+      - from: "context:project_id"
+        as: "project_id"
+      - from: "context:preflight.final_answer.problems"
+        as: "problems"
+      - from: "context:preflight.final_answer.issue_iid"
+        as: "issue_iid"
+      - from: "context:preflight.final_answer.pipeline_id"
+        as: "pipeline_id"
+    toolset: ["create_issue_note", "create_issue"]
+    ui_log_events: ["on_agent_final_answer", "on_tool_execution_failed"]
+
+  - name: "reporter_final"
+    type: AgentComponent
+    prompt_id: "final_reporter_prompt"
+    inputs:
+      - from: "context:project_id"
+        as: "project_id"
+      - from: "context:preflight.final_answer.issue_iid"
+        as: "issue_iid"
+      - from: "context:preflight.final_answer.pipeline_id"
+        as: "pipeline_id"
+      - from: "context:leak_auditor.final_answer.verdict"
+        as: "verdict"
+      - from: "context:leak_auditor.final_answer.scrubbed_occurrences"
+        as: "scrubbed"
+      - from: "context:leak_auditor.final_answer.secrets_loaded"
+        as: "secrets_loaded"
+    toolset: ["create_issue_note", "create_issue"]
+    ui_log_events: ["on_agent_final_answer", "on_tool_execution_failed"]
+
+routers:
+  - from: "preflight"
+    condition:
+      input: "context:preflight.final_answer.decision"
+      routes:
+        "go": "leak_auditor"
+        "no_go": "reporter_blocked"
+        "skip": "end"
+        "default_route": "reporter_blocked"
+  - from: "leak_auditor"
+    to: "reporter_final"
+  - from: "reporter_blocked"
+    to: "end"
+  - from: "reporter_final"
+    to: "end"
+
+flow:
+  entry_point: "preflight"
+
+response_schemas:
+  - schema_id: "preflight_result"
+    definition:
+      "$schema": "http://json-schema.org/draft-07/schema#"
+      title: "preflight_result_response"
+      type: object
+      properties:
+        decision:
+          type: string
+          enum: ["go", "no_go", "skip"]
+          description: "go = deploy ready; no_go = problem; skip = not our event (pipeline still running / not default branch)"
+        problems:
+          type: string
+          description: "Problems separated by ';'"
+        deploy_job_id:
+          type: string
+          description: "deploy-staging job ID, or none"
+        issue_iid:
+          type: string
+          description: "Latest issue IID with label stegoops::rotation, or none"
+        pipeline_id:
+          type: string
+      required: [decision, problems, deploy_job_id, issue_iid, pipeline_id]
+  - schema_id: "audit_result"
+    definition:
+      "$schema": "http://json-schema.org/draft-07/schema#"
+      title: "audit_result_response"
+      type: object
+      properties:
+        verdict:
+          type: string
+          enum: ["clean", "leak", "unavailable"]
+        scrubbed_occurrences:
+          type: integer
+        secrets_loaded:
+          type: string
+          description: "Само ИМЕНАТА на заредените тайни"
+      required: [verdict, scrubbed_occurrences, secrets_loaded]
+
+prompts:
+  - prompt_id: "preflight_prompt"
+    name: "Preflight"
+    unit_primitives: []
+    prompt_template:
+      system: |
+        Deploy preflight agent. Input is a pipeline event or issue link.
+        1. Pipeline event: status must be "success" or "failed" and ref must be default branch; set pipeline_id. Issue: get latest pipeline for default branch.
+        2. Find deploy-staging job ID. Missing -> skip. Failed -> no_go.
+        3. Run: python -m stegoops verify --json . If not ok -> no_go with problems.
+        4. Find latest issue with label stegoops::rotation. Return iid or none.
+        Do not open carriers or search keys. Return structured result when ready.
+      user: |
+        Project ID: {{ project_id }}
+        Trigger: {{ trigger }}
+      placeholder: history
+    params:
+      timeout: 240
+
+  - prompt_id: "auditor_prompt"
+    name: "Leak auditor"
+    unit_primitives: []
+    prompt_template:
+      system: |
+        Read deploy audit artifact: /projects/<project_id>/jobs/<job_id>/artifacts/leak_audit.json
+        Return verdict (clean/leak/unavailable), scrubbed_occurrences, secrets_loaded (names only).
+        If artifact missing -> unavailable. Return structured result when ready.
+      user: |
+        Project ID: {{ project_id }}
+        Deploy job ID: {{ job_id }}
+      placeholder: history
+    params:
+      timeout: 180
+
+  - prompt_id: "blocked_reporter_prompt"
+    name: "Reporter (blocked)"
+    unit_primitives: []
+    prompt_template:
+      system: |
+        Deploy is blocked. If issue_iid is not "none", post a short note with pipeline number, problems, and action.
+        If issue_iid is "none", create a new issue "[Stego-Ops] Deploy problem" with the same content.
+        Never write secret values. Return confirmation when posted.
+      user: |
+        Project ID: {{ project_id }}
+        Pipeline: {{ pipeline_id }}
+        Проблеми: {{ problems }}
+        Issue: {{ issue_iid }}
+      placeholder: history
+    params:
+      timeout: 180
+
+  - prompt_id: "final_reporter_prompt"
+    name: "Reporter (final)"
+    unit_primitives: []
+    prompt_template:
+      system: |
+        Post deploy result.
+        - verdict=clean and issue exists: note that deploy passed, scrubber masked <scrubbed> values, loaded secrets (names only): <secrets_loaded>, no leak; rotation completed.
+        - verdict=clean and no issue: post nothing.
+        - verdict=leak or unavailable: create issue "[Stego-Ops] Possible leak" with secret names to rotate; state that STEGOOPS_KEK and secrets must be rotated immediately.
+        Never write values. Return confirmation when posted.
+      user: |
+        Project ID: {{ project_id }}
+        Pipeline: {{ pipeline_id }}
+        Issue: {{ issue_iid }}
+        Одит: verdict={{ verdict }}, маскирани={{ scrubbed }}, тайни={{ secrets_loaded }}
+      placeholder: history
+    params:
+      timeout: 180

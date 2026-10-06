@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.pyc
+deploy.log
+leak_audit.json
+scan_results.json
+history_results.json
+.purrguard_log/
+public/

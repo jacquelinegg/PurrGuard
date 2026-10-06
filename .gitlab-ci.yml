@@ -1,0 +1,154 @@
+stages: [security, rotate, build, deploy, report]
+
+default:
+  image: python:3.12-slim
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq git > /dev/null
+    - pip install -q -r requirements.txt
+  cache:
+    key: purrguard-log
+    paths: [.purrguard_log/]
+
+variables:
+  GIT_DEPTH: "0"
+  PURRGUARD_MOCK: "1"   # reasoning is done by Duo flows, not direct Anthropic API
+
+# ============ SECURE: PurrGuard + Stego-Ops carrier integrity (no key) ============
+purrguard-mr:
+  stage: security
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - python main.py            # threat => MR cannot merge
+  artifacts:
+    when: always
+    paths: [scan_results.json, purrguard_fixed/]
+
+stegoops-verify:
+  stage: security
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE =~ /^(push|web)$/
+  script:
+    - python -m stegoops verify   # no key: SHA-256 vs manifest + expiry
+
+# Rotation MR (opened by rotate-secrets) must touch ONLY carriers and manifest; otherwise pipeline fails and auto-merge cannot happen.
+rotation-guard:
+  stage: security
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME =~ /^stegoops\/rotate-/
+  script:
+    - python -m stegoops guard-rotation --base "$CI_MERGE_REQUEST_DIFF_BASE_SHA"
+
+tests:
+  stage: security
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE =~ /^(push|web)$/
+  script:
+    - python tests/test_purrguard.py
+    - python tests/test_stegoops.py
+    - python tests/test_autopilot.py
+
+purrguard-history:
+  stage: security
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  script:
+    - python main.py history
+  allow_failure: true
+  artifacts:
+    when: always
+    paths: [history_results.json]
+
+# ============ MONITOR/GOVERN + HANDS-OFF ROTATION (schedule, e.g. daily) ============
+# 1) expiry-watch: no key. Reads manifest, opens issue (label stegoops::rotation) if expiry is near.
+expiry-watch:
+  stage: security
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" || ($CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH)
+  script:
+    - python -m stegoops verify --warn-days 7 --json | tee expiry.json || true
+    - python -m stegoops watch --within 7      # нужен е GITLAB_API_TOKEN само ако има наближаващ срок
+  artifacts:
+    when: always
+    paths: [expiry.json]
+
+# 2) rotate-secrets: the ONLY job with the key in this loop. Rotates, opens MR, and sets auto-merge (on green pipeline).
+#    Agents do not participate in this step. KEK (protected + scope staging) is visible only here.
+rotate-secrets:
+  stage: rotate
+  needs: []
+  environment:
+    name: staging
+    action: access      # не създава deployment, само дава достъп до променливите на средата
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - python -m stegoops autorotate --within 7
+
+# ============ PACKAGE: carrier image -> GitLab Container Registry (+ Artifact Registry if GCP is set) ============
+build-app:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: [""]
+  before_script: []
+  cache: {}
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE =~ /^(push|web)$/
+  script:
+    - sh deploy/kaniko_build.sh
+
+# ============ RELEASE: carrier from registry -> secrets ONLY in memory -> environment ============
+# STEGOOPS_KEK: masked + protected + scoped to environment "staging". Only deploy-* jobs see it.
+deploy-staging:
+  stage: deploy
+  needs: [build-app]
+  environment: staging
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE =~ /^(push|web)$/
+  script:
+    - python -m stegoops exec --from-image "${CI_REGISTRY_IMAGE}/app:${CI_COMMIT_SHORT_SHA}" --path app/assets/logo.png --fallback-local
+      --log-file deploy.log --report leak_audit.json -- python deploy/smoke.py
+    - cat leak_audit.json
+  artifacts:
+    when: always
+      paths: [leak_audit.json]      # counters and names only - read by Duo agent; deploy.log is NOT published
+
+# Optional: Google Cloud Run (requires GCP_PROJECT_ID + GCP_SA_KEY; see SETUP.md). Provides a public URL for the jury.
+deploy-cloudrun:
+  stage: deploy
+  image: google/cloud-sdk:slim
+  needs: [build-app, deploy-staging]
+  environment: staging
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq git python3-venv python3-pip > /dev/null
+    - python3 -m venv /tmp/venv && . /tmp/venv/bin/activate && pip install -q -r requirements.txt -r requirements-gcp.txt
+  rules:
+    - if: $GCP_PROJECT_ID && $GCP_SA_KEY && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE =~ /^(push|web)$/
+  script:
+    - . /tmp/venv/bin/activate
+    - export GOOGLE_APPLICATION_CREDENTIALS="$GCP_SA_KEY"
+    - gcloud auth activate-service-account --key-file "$GCP_SA_KEY" --project "$GCP_PROJECT_ID"
+    - export SRC_IMAGE="${CI_REGISTRY_IMAGE}/app:${CI_COMMIT_SHORT_SHA}"
+    - export RUN_IMAGE="${GCP_REGION:-europe-west1}-docker.pkg.dev/${GCP_PROJECT_ID}/purrguard/app:${CI_COMMIT_SHORT_SHA}"
+    - bash deploy/cloudrun.sh
+  artifacts:
+    paths: [cloudrun_url.txt]
+
+# ============ MONITOR/GOVERN: GitLab Pages dashboard ============
+pages:
+  stage: report
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE =~ /^(push|web)$/
+  needs: []
+  script:
+    - python main.py scan || true
+    - python main.py history || true
+    - python main.py report
+  pages: true
+  artifacts:
+    paths: [public]

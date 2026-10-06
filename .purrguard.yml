@@ -1,0 +1,8 @@
+fail_on: HIGH                 # LOW | MEDIUM | HIGH | CRITICAL
+ignore_paths: [.git, node_modules, purrguard_fixed, public]
+chi_square_threshold: 0.05    # p-стойност: естествените изображения дават p~0, вградените данни - по-висока
+min_zero_width_chars: 1
+auto_fix: true                # отваря fix MR с изчистени файлове
+history_max_commits: 500
+allowlist_sha256: []          # одобрени файлове (python main.py allow <файл>)
+carrier_manifest: .stegoops/manifest.json   # авторизирани Stego-Ops носители (SHA-256 пина)

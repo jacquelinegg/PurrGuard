@@ -108,3 +108,5 @@ Google Cloud Logging, Slack и план за ротация са както пр
 MIT.
 
 <!-- pipeline trigger 2026-10-06 18:47:09 -->
+
+<!-- pipeline trigger 2026-10-06 18:56:09 -->

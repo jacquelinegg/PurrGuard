@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import threading
+from pathlib import Path
 
 from . import crypto, lsb
 from .scrub import Scrubber
@@ -56,14 +57,14 @@ def seal(carrier_path, secrets: dict, provider, env="staging", ttl_days=30, out_
         raise VaultError("No secrets to seal")
     out_path = out_path or carrier_path
     png = open(carrier_path, "rb").read()
-    entry_id = f"{env}:{os.path.normpath(out_path)}"
+    entry_id = f"{env}:{Path(out_path).as_posix()}"
     expires = (_now() + dt.timedelta(days=ttl_days)).isoformat(timespec="seconds")
     plain = json.dumps({"v": 1, "env": env, "expires_at": expires, "secrets": secrets}, sort_keys=True).encode()
     blob = crypto.encrypt(plain, provider, _aad(entry_id))
     seed = os.urandom(32)
     sealed = lsb.embed(png, seed, blob)
     open(out_path, "wb").write(sealed)
-    entry = {"id": entry_id, "path": os.path.normpath(out_path), "sha256": _sha(sealed), "env": env,
+    entry = {"id": entry_id, "path": Path(out_path).as_posix(), "sha256": _sha(sealed), "env": env,
              "names": sorted(secrets), "created": _now().isoformat(timespec="seconds"), "expires_at": expires,
              "provider": provider.name, "locator": base64.b64encode(provider.wrap(seed, _aad(entry_id))).decode(),
              "payload_bytes": len(blob)}
@@ -96,10 +97,11 @@ def verify(manifest_path=MANIFEST):
     """Checks without key: hashes, missing files, expiry. Returns problems list (empty = OK)."""
     problems = []
     for e in load_manifest(manifest_path)["carriers"]:
-        if not os.path.isfile(e["path"]):
+        p = Path(e["path"])
+        if not p.exists():
             problems.append(f"{e['path']}: file missing")
             continue
-        if _sha(open(e["path"], "rb").read()) != e["sha256"]:
+        if _sha(p.read_bytes()) != e["sha256"]:
             problems.append(f"{e['path']}: SHA-256 does not match manifest")
         if _now() > dt.datetime.fromisoformat(e["expires_at"]):
             problems.append(f"{e['path']}: package expired ({e['expires_at']})")

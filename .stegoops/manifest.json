@@ -1,19 +1,19 @@
 {
   "carriers": [
     {
-      "created": "2026-10-06T15:24:27+00:00",
+      "created": "2026-10-06T15:29:37+00:00",
       "env": "staging",
-      "expires_at": "2026-11-05T15:24:27+00:00",
-      "id": "staging:app\\assets\\logo.png",
-      "locator": "aUivk9HROsqk2FLc3xOlaPFrTrgxkNvYFXrn6zYjHlm9/U1g+z3zUqF4qa+/EYkYTeRsEkVdwiH+CUMD",
+      "expires_at": "2026-11-05T15:29:37+00:00",
+      "id": "staging:app/assets/logo.png",
+      "locator": "ajlPniDBK40/+xPzdytxzfAIZ9f9wL1y8GwncXd/5wGsgRguNBncobNPYvLpj+BV6cCJTxfhxvFyaao1",
       "names": [
         "DEMO_API_TOKEN",
         "DEMO_DB_PASSWORD"
       ],
-      "path": "app\\assets\\logo.png",
+      "path": "app/assets/logo.png",
       "payload_bytes": 273,
       "provider": "env",
-      "sha256": "dad9c664de756607657ec428490b19ee00c2dc553fb3c50594c6a0b3bd0f8d5f"
+      "sha256": "1fba641fb895f3463a95e30ce76bce50b97ba505b818baa2fbc6d046bf1916de"
     }
   ],
   "version": 1

@@ -74,7 +74,7 @@ check("всички 7 заразени демо файла са хванати",
 check("всички 5 чисти демо файла са чисти", not (clean & dflag))
 from core.explain import explain
 ex = explain("demo_files/08_report_infected.pdf")
-check("explain показва доказателства и ръчна проверка", "EmbeddedFile" in ex and "Провери го сама" in ex and "AKIAFAKE" not in ex)
+check("explain shows evidence and independent verification", "EmbeddedFile" in ex and "Verify independently" in ex and "AKIAFAKE" not in ex)
 # --- honeytokens ---
 from core import honeytokens as H
 import re, numpy as np

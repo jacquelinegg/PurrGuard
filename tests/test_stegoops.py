@@ -72,7 +72,7 @@ check("sequential LSB четец (като zsteg) не намира нищо ч�
 Image.open(io.BytesIO(clean)).save("old.png")
 ee = vault.seal("old.png", {"X_TOKEN": "FAKE-expired-token"}, prov, env="old", ttl_days=-1)
 check("изтекъл пакет се отказва", raises(lambda: vault.open_bytes(open("old.png", "rb").read(), ee, prov), vault.VaultError))
-check("verify засича изтекъл пакет", any("изтекъл" in p for p in vault.verify()))
+check("verify detects expired package", any("expired" in p for p in vault.verify()))
 old_loc = e["locator"]
 ne = vault.rotate("logo.png", prov, ttl_days=30)
 rotated = open("logo.png", "rb").read()

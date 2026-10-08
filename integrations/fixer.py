@@ -11,7 +11,10 @@ from core.sanitize import sanitize
 def build_fixes(findings, outdir="purrguard_fixed"):
     fixed = {}
     for path in sorted({f["file"] for f in findings if f["analyzer"] != "error" and not f["analyzer"].startswith("carrier")}):
-        data = sanitize(path)
+        try:
+            data = sanitize(path)
+        except Exception:  # a file that cannot even be parsed cannot be cleaned automatically
+            continue
         if data is not None and data != Path(path).read_bytes():
             fixed[path] = data
             os.makedirs(os.path.join(outdir, os.path.dirname(path)), exist_ok=True)

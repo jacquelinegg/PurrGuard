@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from .analyzers import PNG_END, PNG_SIG, ZW_CHARS
+from .analyzers import PNG_END, PNG_SIG, ZW_CHARS, BIDI_CONTROLS, TAG_CHARS
 
 
 def sanitize(path):
@@ -49,4 +49,5 @@ def sanitize(path):
     except (UnicodeDecodeError, OSError):
         return None
     lead = "\ufeff" if text.startswith("\ufeff") else ""
-    return (lead + text.lstrip("\ufeff").translate({ord(c): None for c in ZW_CHARS})).encode("utf-8")
+    invisible = ZW_CHARS + BIDI_CONTROLS + TAG_CHARS
+    return (lead + text.lstrip("\ufeff").translate({ord(c): None for c in invisible})).encode("utf-8")

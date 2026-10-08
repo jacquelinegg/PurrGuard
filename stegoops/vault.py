@@ -13,7 +13,10 @@ from . import crypto, lsb
 from .scrub import Scrubber
 
 MANIFEST = ".stegoops/manifest.json"
-SECRET_ENV_BLOCKLIST = {"STEGOOPS_KEK", "STEGOOPS_KMS_KEY", "GITLAB_API_TOKEN", "GCP_SA_KEY_JSON", "ANTHROPIC_API_KEY"}
+# The child process must not receive anything that can push to the registry/repo or
+# decrypt carriers. GOOGLE_APPLICATION_CREDENTIALS stays: the deploy step itself needs it.
+SECRET_ENV_BLOCKLIST = {"STEGOOPS_KEK", "STEGOOPS_KMS_KEY", "GITLAB_API_TOKEN", "GCP_SA_KEY_JSON",
+                        "ANTHROPIC_API_KEY", "CI_JOB_TOKEN", "CI_REPOSITORY_URL"}
 
 
 class VaultError(Exception):
@@ -34,10 +37,25 @@ def load_manifest(path=MANIFEST):
     return json.load(open(path))
 
 
+def _atomic_write(path, data):
+    """Write through a temporary file and os.replace, so a crash can never
+    leave a half-written carrier or manifest on disk."""
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def save_manifest(m, path=MANIFEST):
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    json.dump(m, open(path, "w"), indent=2, ensure_ascii=False, sort_keys=True)
-    open(path, "a").write("\n")
+    _atomic_write(path, (json.dumps(m, indent=2, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8"))
 
 
 def find_entry(m, path=None, cid=None):
@@ -51,6 +69,22 @@ def _aad(entry_id: str) -> bytes:
     return b"stegoops:v1:" + entry_id.encode()
 
 
+def _seal_bytes(png, secrets: dict, provider, entry_id: str, env, ttl_days, path) -> tuple:
+    """Encrypts secrets and hides them in the carrier bytes. Returns (sealed_bytes, entry)."""
+    expires = (_now() + dt.timedelta(days=ttl_days)).isoformat(timespec="seconds")
+    plain = json.dumps({"v": 1, "env": env, "expires_at": expires, "secrets": secrets}, sort_keys=True).encode()
+    blob = crypto.encrypt(plain, provider, _aad(entry_id))
+    seed = os.urandom(32)
+    sealed = lsb.embed(png, seed, blob)
+    entry = {"id": entry_id, "path": Path(path).as_posix(), "sha256": _sha(sealed), "env": env,
+             "names": sorted(secrets), "created": _now().isoformat(timespec="seconds"), "expires_at": expires,
+             "provider": provider.name, "locator": base64.b64encode(provider.wrap(seed, _aad(entry_id))).decode(),
+             "payload_bytes": len(blob)}
+    if getattr(provider, "key_name", None):
+        entry["kms_key"] = provider.key_name  # not a secret
+    return sealed, entry
+
+
 def seal(carrier_path, secrets: dict, provider, env="staging", ttl_days=30, out_path=None, manifest_path=MANIFEST):
     """Encrypts secrets and hides them in the carrier. Returns manifest entry (no secrets)."""
     if not secrets:
@@ -58,18 +92,8 @@ def seal(carrier_path, secrets: dict, provider, env="staging", ttl_days=30, out_
     out_path = out_path or carrier_path
     png = open(carrier_path, "rb").read()
     entry_id = f"{env}:{Path(out_path).as_posix()}"
-    expires = (_now() + dt.timedelta(days=ttl_days)).isoformat(timespec="seconds")
-    plain = json.dumps({"v": 1, "env": env, "expires_at": expires, "secrets": secrets}, sort_keys=True).encode()
-    blob = crypto.encrypt(plain, provider, _aad(entry_id))
-    seed = os.urandom(32)
-    sealed = lsb.embed(png, seed, blob)
-    open(out_path, "wb").write(sealed)
-    entry = {"id": entry_id, "path": Path(out_path).as_posix(), "sha256": _sha(sealed), "env": env,
-             "names": sorted(secrets), "created": _now().isoformat(timespec="seconds"), "expires_at": expires,
-             "provider": provider.name, "locator": base64.b64encode(provider.wrap(seed, _aad(entry_id))).decode(),
-             "payload_bytes": len(blob)}
-    if getattr(provider, "key_name", None):
-        entry["kms_key"] = provider.key_name  # not a secret
+    sealed, entry = _seal_bytes(png, secrets, provider, entry_id, env, ttl_days, out_path)
+    _atomic_write(out_path, sealed)
     m = load_manifest(manifest_path)
     m["carriers"] = [e for e in m["carriers"] if e["id"] != entry_id] + [entry]
     save_manifest(m, manifest_path)
@@ -109,14 +133,20 @@ def verify(manifest_path=MANIFEST):
 
 
 def rotate(carrier_path, provider, ttl_days=30, manifest_path=MANIFEST):
-    """New DEK, new seed (new positions), new TTL. Old positions are overwritten with random bits so old ciphertext does not remain in the image."""
+    """New DEK, new seed (new positions), new TTL. Old positions are overwritten with random bits so
+    old ciphertext does not remain in the image. The carrier is replaced in a single atomic write:
+    if anything fails, the original (still valid) carrier stays on disk - the secrets are never destroyed."""
     m = load_manifest(manifest_path)
     e = find_entry(m, path=carrier_path)
     png = open(carrier_path, "rb").read()
     secrets = open_bytes(png, e, provider, allow_expired=True)
     old_seed = provider.unwrap(base64.b64decode(e["locator"]), _aad(e["id"]))
-    open(carrier_path, "wb").write(lsb.wipe(png, old_seed))
-    return seal(carrier_path, secrets, provider, env=e["env"], ttl_days=ttl_days, manifest_path=manifest_path)
+    wiped = lsb.wipe(png, old_seed)  # in memory only: nothing touches the disk until the new carrier is ready
+    sealed, entry = _seal_bytes(wiped, secrets, provider, e["id"], e["env"], ttl_days, carrier_path)
+    _atomic_write(carrier_path, sealed)
+    m["carriers"] = [x for x in m["carriers"] if x["id"] != e["id"]] + [entry]
+    save_manifest(m, manifest_path)
+    return entry
 
 
 def _pump(src, dst, scrubber, log):
@@ -156,5 +186,5 @@ def make_decoy(carrier_path, honeytoken_value: str, out_path=None):
     """Decoy carrier: sequential LSB with honeytoken (what ordinary tools like zsteg find)."""
     out_path = out_path or carrier_path
     data = lsb.embed_plain(open(carrier_path, "rb").read(), honeytoken_value.encode())  # read first, then write
-    open(out_path, "wb").write(data)
+    _atomic_write(out_path, data)
     return out_path

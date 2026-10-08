@@ -8,7 +8,7 @@ from pathlib import Path
 import yaml
 
 from . import analyzers as A
-from . import baseline, carriers, honeytokens
+from . import baseline, carriers, honeytokens, trusted
 
 RANK = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
 TEXT_EXT = {".sql", ".py", ".js", ".ts", ".md", ".txt", ".yml", ".yaml", ".json", ".sh", ".java", ".go", ".html", ".css", ".env", ".cfg", ".ini"}
@@ -17,17 +17,25 @@ TEXT_EXT = {".sql", ".py", ".js", ".ts", ".md", ".txt", ".yml", ".yaml", ".json"
 def load_config(path=".purrguard.yml"):
     cfg = {"fail_on": "HIGH", "ignore_paths": [".git"], "chi_square_threshold": 0.05, "min_zero_width_chars": 1,
            "allowlist_sha256": [], "honeytokens_file": ".purrguard_honey.json", "carrier_manifest": carriers.DEFAULT_MANIFEST, "auto_fix": True, "history_max_commits": 500}
-    if os.path.exists(path):
-        cfg.update(yaml.safe_load(open(path)) or {})
+    data = trusted.read_trusted(path)  # in an MR the config comes from the base commit: the MR cannot weaken its own scan
+    if data is not None:
+        cfg.update(yaml.safe_load(data.decode("utf-8")) or {})
     return cfg
 
 
 def changed_files():
-    """Files changed in MR; if no context - all tracked files."""
+    """Files changed in MR; if no context - all tracked files. Fails loudly: a git
+    error must never look like "0 files, all clean". -z disables name quoting (names
+    with special characters survive), AMR includes renamed files."""
     base = os.environ.get("CI_MERGE_REQUEST_DIFF_BASE_SHA")
-    cmd = ["git", "diff", "--name-only", "--diff-filter=AM", base, "HEAD"] if base else ["git", "ls-files"]
+    if base:
+        cmd = ["git", "-c", "core.quotePath=false", "diff", "--name-only", "-z", "--diff-filter=AMR", base, "HEAD"]
+    else:
+        cmd = ["git", "-c", "core.quotePath=false", "ls-files", "-z"]
     r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
-    return [f for f in r.stdout.split("\n") if f]
+    if r.returncode != 0:
+        raise RuntimeError("git failed (the scanner refuses to report a silent clean): " + r.stderr.strip())
+    return [f for f in r.stdout.split("\0") if f]
 
 
 def _is_ignored(path, ignore_paths):
@@ -43,22 +51,38 @@ def _is_ignored(path, ignore_paths):
 
 
 def scan_file(path, cfg, repo_path=None):
+    """Runs each analyzer in isolation: a crash in one (e.g. a broken PNG in the
+    chi-square test) must not wipe the findings of the others, and the crash itself
+    is a HIGH finding (a file that crashes a parser is corrupt or crafted to evade)."""
     ext = Path(path).suffix.lower()
-    out = []
+    jobs = []
     if ext == ".png":
-        out = A.trailing_bytes(path) + A.png_chunks(path) + A.chi_square_png(path, cfg["chi_square_threshold"])
+        jobs += [("trailing_bytes", lambda: A.trailing_bytes(path)),
+                 ("png_chunks", lambda: A.png_chunks(path)),
+                 ("chi_square_lsb", lambda: A.chi_square_png(path, cfg["chi_square_threshold"]))]
     elif ext in (".jpg", ".jpeg"):
-        out = A.trailing_bytes(path)
+        jobs += [("trailing_bytes", lambda: A.trailing_bytes(path))]
     elif ext == ".wav":
-        out = A.wav_structure(path)
+        jobs += [("wav_structure", lambda: A.wav_structure(path))]
     elif ext == ".pdf":
-        out = A.pdf_structure(path)
+        jobs += [("pdf_structure", lambda: A.pdf_structure(path))]
     elif ext == ".mp3":
-        out = A.mp3_trailing(path)
+        jobs += [("trailing_bytes", lambda: A.mp3_trailing(path))]
     elif ext in TEXT_EXT:
-        out = A.zero_width(path, cfg["min_zero_width_chars"])
+        jobs += [("zero_width", lambda: A.zero_width(path, cfg["min_zero_width_chars"])),
+                 ("invisible_unicode", lambda: A.invisible_unicode(path, cfg["min_zero_width_chars"]))]
+    out = []
+    for name, fn in jobs:
+        try:
+            out += fn()
+        except Exception as e:
+            out.append(A.finding(name, "HIGH", f"Analyzer crashed (corrupt or crafted file): {type(e).__name__}: {e}"))
     reg = honeytokens.load(cfg.get("honeytokens_file", honeytokens.DEFAULT_FILE))
-    return out + honeytokens.scan(path, reg, repo_path or path)  # honeytokens are searched in ALL files
+    try:
+        out += honeytokens.scan(path, reg, repo_path or path)
+    except Exception as e:
+        out.append(A.finding("honeytoken", "HIGH", f"Honeytoken scan crashed: {type(e).__name__}: {e}"))
+    return out  # honeytokens are searched in ALL files
 
 
 def run(files=None, cfg=None):
@@ -85,8 +109,8 @@ def run(files=None, cfg=None):
         try:
             for fd in scan_file(f, cfg):
                 results.append({"file": f, **fd})
-        except Exception as e:  # one broken file must not stop the pipeline
-            results.append({"file": f, "analyzer": "error", "severity": "LOW", "detail": f"Analysis error: {e}", "score": None})
+        except Exception as e:  # last-resort safety net: must not stop the pipeline, but must not look clean either
+            results.append({"file": f, "analyzer": "error", "severity": "HIGH", "detail": f"Analysis error: {e}", "score": None})
     try:
         results += baseline.compare([f for f in files if os.path.isfile(f) and f not in authorized])
     except Exception as e:

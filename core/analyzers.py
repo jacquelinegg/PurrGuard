@@ -14,6 +14,8 @@ STD_CHUNKS = {b"IHDR", b"PLTE", b"IDAT", b"IEND", b"tRNS", b"gAMA", b"cHRM", b"s
 TEXT_CHUNKS = {b"tEXt", b"zTXt", b"iTXt"}
 ZW_CHARS = "\u200b\u200c\u200d\u2060\ufeff"
 ZW_RE = re.compile(f"[{ZW_CHARS}]")
+BIDI_CONTROLS = "\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069"  # Trojan Source (CVE-2021-42574)
+TAG_CHARS = "".join(chr(c) for c in range(0xE0000, 0xE0080))  # invisible Unicode TAG characters
 SECRET_RE = re.compile(
     rb"(AKIA[0-9A-Z]{16,}|AIza[0-9A-Za-z_\-]{35}|glpat-[0-9A-Za-z_\-]{20}|"
     rb"sk-ant-[0-9A-Za-z_\-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|"
@@ -35,15 +37,68 @@ def _shannon(data: bytes) -> float:
     return float(-(p * np.log2(p)).sum() / 8)  # normalized 0..1
 
 
+def _png_end(data):
+    """Offset just after the first IEND chunk, walking the chunk structure."""
+    pos = 8
+    while pos + 12 <= len(data):
+        length, ctype = struct.unpack(">I4s", data[pos:pos + 8])
+        if ctype == b"IEND":
+            return pos + 12
+        if length > len(data) - pos - 12:  # corrupt chunk: the structure cannot be walked
+            return -1
+        pos += 12 + length
+    return -1
+
+
+def _jpeg_end(data):
+    """Offset just after the EOI marker, walking the segment structure (so an EOI
+    inside an EXIF thumbnail, which lives in a length-prefixed APP segment, does
+    not end the file)."""
+    if data[:2] != b"\xff\xd8":
+        return -1
+    pos, n = 2, len(data)
+    while pos + 1 < n:
+        if data[pos] != 0xFF:
+            pos += 1
+            continue
+        marker = data[pos + 1]
+        if marker == 0xD9:  # EOI
+            return pos + 2
+        if marker == 0x00 or 0xD0 <= marker <= 0xD7:  # byte stuffing / restart marker
+            pos += 2
+            continue
+        if pos + 3 >= n:
+            return -1
+        seg_len = int.from_bytes(data[pos + 2:pos + 4], "big")
+        pos += 2 + seg_len
+        if marker == 0xDA:  # SOS: entropy-coded data follows, scan it for the next marker
+            while pos + 1 < n:
+                if data[pos] != 0xFF:
+                    pos += 1
+                    continue
+                if data[pos + 1] == 0x00 or 0xD0 <= data[pos + 1] <= 0xD7:
+                    pos += 2
+                    continue
+                break
+    return -1
+
+
 def trailing_bytes(path):
-    """Data after PNG (IEND) or JPEG (EOI) end marker."""
+    """Data after the real PNG (IEND) or JPEG (EOI) end, located by parsing the
+    file structure - a payload followed by a fake end marker cannot hide it."""
     data = open(path, "rb").read()
     if data.startswith(PNG_SIG):
-        i = data.rfind(PNG_END)
-        tail = data[i + len(PNG_END):] if i != -1 else b""
+        i = _png_end(data)
+        if i == -1:  # malformed structure: fall back to the first IEND signature
+            j = data.find(PNG_END)
+            i = j + len(PNG_END) if j != -1 else -1
+        tail = data[i:] if i != -1 else b""
     elif data.startswith(b"\xff\xd8"):
-        i = data.rfind(b"\xff\xd9")
-        tail = data[i + 2:] if i != -1 else b""
+        i = _jpeg_end(data)
+        if i == -1:  # malformed structure: fall back to the first EOI marker
+            j = data.find(b"\xff\xd9")
+            i = j + 2 if j != -1 else -1
+        tail = data[i:] if i != -1 else b""
     else:
         return []
     tail = tail.strip(b"\x00\r\n ")
@@ -167,6 +222,31 @@ def zero_width(path, min_chars=1):
     return [finding("zero_width", sev,
                     f"{len(chars)} invisible Unicode chars" + ("; decoded content looks like a secret" if secret else ""),
                     len(chars), classify_secret(decoded) if secret else None)]
+
+
+def invisible_unicode(path, min_chars=1):
+    """TAG characters (U+E0000-U+E007F) encode raw bytes invisibly; bidi controls
+    (Trojan Source, CVE-2021-42574) reverse or isolate the display order of text.
+    Both are invisible to reviewers and to AI agents reading the file."""
+    try:
+        text = open(path, encoding="utf-8").read()
+    except (UnicodeDecodeError, OSError):
+        return []
+    out = []
+    tags = [c for c in text if c in TAG_CHARS]
+    if len(tags) >= min_chars:
+        decoded = bytes(ord(c) - 0xE0000 for c in tags)
+        secret = bool(SECRET_RE.search(decoded))
+        out.append(finding("invisible_tag", "CRITICAL" if secret else "HIGH",
+                           f"{len(tags)} invisible Unicode TAG characters"
+                           + ("; decoded content looks like a secret" if secret else ""),
+                           len(tags), classify_secret(decoded) if secret else None))
+    bidi = [c for c in text if c in BIDI_CONTROLS]
+    if len(bidi) >= min_chars:
+        out.append(finding("invisible_bidi", "MEDIUM",
+                           f"{len(bidi)} bidi control characters (Trojan Source: text display order can be manipulated)",
+                           len(bidi)))
+    return out
 
 
 def classify_secret(b: bytes):

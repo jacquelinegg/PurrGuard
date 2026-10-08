@@ -50,6 +50,7 @@ tests:
     - python tests/test_purrguard.py
     - python tests/test_stegoops.py
     - python tests/test_autopilot.py
+    - python tests/test_cloud_fixes.py
 
 purrguard-history:
   stage: security

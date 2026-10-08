@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from . import trusted
 from .analyzers import PNG_SIG, ZW_CHARS, finding
 
 DEFAULT_FILE = ".purrguard_honey.json"
@@ -33,11 +34,12 @@ sha = lambda s: hashlib.sha256(s if isinstance(s, bytes) else s.encode()).hexdig
 
 
 def load(path=DEFAULT_FILE):
-    if not os.path.exists(path):
+    data = trusted.read_trusted(path)  # in an MR the registry comes from the base commit
+    if data is None:
         return {"tokens": []}
-    key = (path, os.path.getmtime(path))
+    key = (path, os.path.getmtime(path) if os.path.exists(path) else 0, trusted.base_rev() or "-")
     if key not in _cache:
-        _cache[key] = json.load(open(path))
+        _cache[key] = json.loads(data.decode("utf-8"))
     return _cache[key]
 
 
@@ -45,9 +47,20 @@ def _save(reg, path):
     json.dump(reg, open(path, "w"), indent=2, ensure_ascii=False)
 
 
+def _read_worktree(path):
+    """Registry bytes from the working tree (used by writers: add/init)."""
+    if not os.path.exists(path):
+        return None
+    try:
+        return open(path, "rb").read()
+    except OSError:
+        return None
+
+
 def add(kind, value, decoy, path=DEFAULT_FILE):
     """Registers an existing bait (e.g., a real service account key without permissions). Only the hash is stored."""
-    reg = load(path) if os.path.exists(path) else {"tokens": []}
+    data = _read_worktree(path)  # writers see the working tree, not the MR base
+    reg = json.loads(data.decode("utf-8")) if data else {"tokens": []}
     reg = {"tokens": list(reg["tokens"])}
     tid = f"ht-{len(reg['tokens']) + 1}"
     reg["tokens"].append({"id": tid, "kind": kind, "sha256": sha(value), "decoy": decoy})

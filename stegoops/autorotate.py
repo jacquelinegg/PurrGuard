@@ -2,12 +2,14 @@
 Agents (Duo flows) do NOT perform privileged steps: they only verify and report."""
 import base64
 import datetime as dt
+import json
 import os
 import subprocess
 import time
 
 import requests
 
+from integrations.gitlab_client import neutralize_quick_actions
 from . import vault
 
 LABEL = "stegoops::rotation"
@@ -34,8 +36,15 @@ def changed_files(base):
 
 
 def guard_rotation(base, manifest_path=vault.MANIFEST):
-    """A rotation MR can change ONLY carriers and manifest. Returns violations (empty list = OK)."""
-    allowed = {os.path.normpath(e["path"]) for e in vault.load_manifest(manifest_path)["carriers"]}
+    """A rotation MR can change ONLY carriers and manifest. Returns violations (empty list = OK).
+    The allowed list comes from the BASE commit's manifest: a manifest inside the MR cannot add
+    a file (e.g. .gitlab-ci.yml) as a 'carrier' and then change it through auto-merge."""
+    r = subprocess.run(["git", "show", f"{base}:{manifest_path}"], capture_output=True)
+    if r.returncode != 0:
+        raise vault.VaultError("guard-rotation: manifest is not in the base commit: "
+                               + r.stderr.decode("utf-8", "replace").strip())
+    m = json.loads(r.stdout.decode("utf-8"))
+    allowed = {os.path.normpath(e["path"]) for e in m["carriers"]}
     allowed.add(os.path.normpath(manifest_path))
     return [f for f in changed_files(base) if os.path.normpath(f) not in allowed]
 
@@ -102,9 +111,9 @@ def watch(within_days=7, gl=None, manifest_path=vault.MANIFEST):
         lines = [f"- `{i['path']}` ({i['env']}): valid until {i['expires_at']} ({i['days_left']} days); secrets (names only): {', '.join(i['names'])}"
                  for i in items]
         issue = gl.open_issue("[Stego-Ops] Secret package expiry approaching - automatic rotation pending",
-                              "Detected without key, from manifest:\n\n" + "\n".join(lines) +
+                              neutralize_quick_actions("Detected without key, from manifest:\n\n" + "\n".join(lines) +
                               "\n\nNext: the `rotate-secrets` CI job (the only one with the key) will perform rotation and open an MR with auto-merge. "
-                              "The Deploy Sentinel agent checks the result after deploy. Secret values are never shown.")
+                              "The Deploy Sentinel agent checks the result after deploy. Secret values are never shown."))
     return issue, items
 
 
@@ -124,8 +133,8 @@ def rotate_and_open_mr(within_days, provider_factory, ttl_days=30, gl=None, mani
     gl.create_branch(branch, gl.default_branch())
     gl.commit(branch, "stegoops: automatic secret package rotation", files)
     mr = gl.create_mr(branch, gl.default_branch(), "[Stego-Ops] Automatic secret rotation",
-                      f"Closes #{issue['iid']}\n\nOnly carriers and manifest have changed (verified by `rotation-guard`). "
-                      "Merges automatically when the pipeline passes (PurrGuard + verify + tests).")
+                      neutralize_quick_actions(f"Closes #{issue['iid']}\n\nOnly carriers and manifest have changed (verified by `rotation-guard`). "
+                      "Merges automatically when the pipeline passes (PurrGuard + verify + tests)."))
     merged_when_green = gl.automerge(mr["iid"], sleep=sleep)
     return {"issue": issue["web_url"], "mr": mr["web_url"], "iid": mr["iid"], "auto_merge": merged_when_green,
             "carriers": [i["path"] for i in items]}

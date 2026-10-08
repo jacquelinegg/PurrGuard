@@ -1,3 +1,3 @@
-# По избор: директни Anthropic заявки (PURRGUARD_MOCK=0) и Cloud Logging. CI ги НЕ инсталира по подразбиране.
+# Optional: direct Anthropic requests (PURRGUARD_MOCK=0) and Cloud Logging. CI does NOT install these by default.
 anthropic
 google-cloud-logging

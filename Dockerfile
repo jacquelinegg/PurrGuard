@@ -4,7 +4,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
-# Сканираният репозиторий се монтира в /repo (-v "$(pwd)":/repo)
+# The scanned repository is mounted at /repo (-v "$(pwd)":/repo)
 WORKDIR /repo
 ENV PYTHONPATH=/app PYTHONUNBUFFERED=1
 ENTRYPOINT ["python", "/app/main.py"]

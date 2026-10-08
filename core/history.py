@@ -42,5 +42,6 @@ def scan_history(cfg=None, max_commits=None):
             for fd in found:
                 results.append({"file": line, "commit": commit[:10], **fd})
     out = {"blobs_scanned": scanned, "findings": results}
-    json.dump(out, open("history_results.json", "w"), ensure_ascii=False, indent=2)
+    with open("history_results.json", "w", encoding="utf-8") as fp:
+        json.dump(out, fp, ensure_ascii=False, indent=2)
     return out

@@ -1,2 +1,2 @@
-# Само за deploy-cloudrun
+# For deploy-cloudrun only
 google-cloud-secret-manager

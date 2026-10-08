@@ -34,8 +34,8 @@ def compare(files, base=None):
             ratio = len(new) / max(len(old), 1)
             fd, tmp = tempfile.mkstemp(suffix=".png")
             try:
-                os.write(fd, old)
-                os.close(fd)
+                with os.fdopen(fd, "wb") as fh:
+                    fh.write(old)
                 old_p, new_p = A.lsb_score_png(tmp), A.lsb_score_png(f)
             finally:
                 os.unlink(tmp)

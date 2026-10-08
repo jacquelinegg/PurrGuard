@@ -26,7 +26,20 @@ def changed_files():
     """Files changed in MR; if no context - all tracked files."""
     base = os.environ.get("CI_MERGE_REQUEST_DIFF_BASE_SHA")
     cmd = ["git", "diff", "--name-only", "--diff-filter=AM", base, "HEAD"] if base else ["git", "ls-files"]
-    return [f for f in subprocess.run(cmd, capture_output=True, text=True).stdout.split("\n") if f]
+    r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+    return [f for f in r.stdout.split("\n") if f]
+
+
+def _is_ignored(path, ignore_paths):
+    """True if any ignore_paths entry is a whole path component (e.g. '.git', 'node_modules')
+    or a path prefix. Component matching avoids substring false positives: '.gitignore' is NOT ignored."""
+    norm = os.path.normpath(path)
+    parts = Path(norm).parts
+    for p in ignore_paths:
+        p = os.path.normpath(p)
+        if p in parts or norm == p or norm.startswith(p + os.sep):
+            return True
+    return False
 
 
 def scan_file(path, cfg, repo_path=None):
@@ -57,7 +70,7 @@ def run(files=None, cfg=None):
     if mf:
         results.append({"file": cfg["carrier_manifest"], **mf})
     for f in files:
-        if any(f.startswith(p) or f"/{p}" in f for p in cfg["ignore_paths"]) or not os.path.isfile(f):
+        if _is_ignored(f, cfg["ignore_paths"]) or not os.path.isfile(f):
             continue
         if hashlib.sha256(open(f, "rb").read()).hexdigest() in cfg["allowlist_sha256"]:
             continue  # approved false positive
@@ -82,7 +95,8 @@ def run(files=None, cfg=None):
     out = {"files_scanned": len(files), "authorized_carriers": authorized, "findings": results,
            "max_severity": next((k for k, v in RANK.items() if v == top), "NONE"),
            "threat_detected": top >= RANK[cfg["fail_on"]]}
-    json.dump(out, open("scan_results.json", "w"), ensure_ascii=False, indent=2)
+    with open("scan_results.json", "w", encoding="utf-8") as fp:
+        json.dump(out, fp, ensure_ascii=False, indent=2)
     os.makedirs(".purrguard_log", exist_ok=True)
     counts = {k: sum(r["severity"] == k for r in results) for k in RANK}
     with open(".purrguard_log/log.jsonl", "a") as lg:

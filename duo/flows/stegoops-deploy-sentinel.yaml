@@ -1,6 +1,6 @@
 # Flow 2 - HANDS-OFF: no human gate. Triggered by pipeline events or issue mention.
-# Агентът НЕ държи тайни и не чете сурови логове: чете само детерминирания одит leak_audit.json, който деплой задачата публикува.
-# Привилегированите действия (ротация, merge) са в CI (rotate-secrets + auto-merge); агентите ПРОВЕРЯВАТ и ОТЧИТАТ.
+# The agent holds no secrets and does not read raw logs: it reads only the deterministic leak_audit.json published by the deploy job.
+# Privileged actions (rotation, merge) live in CI (rotate-secrets + auto-merge); agents only VERIFY and REPORT.
 name: "Stego-Ops Deploy Sentinel"
 description: "After each main-branch pipeline: checks readiness (manifest, expiry, deploy job), reads leak audit, and reports; opens rotation issue on leak."
 version: "v1"
@@ -123,7 +123,7 @@ response_schemas:
           type: integer
         secrets_loaded:
           type: string
-          description: "Само ИМЕНАТА на заредените тайни"
+          description: "Only the NAMES of the loaded secrets"
       required: [verdict, scrubbed_occurrences, secrets_loaded]
 
 prompts:
@@ -171,7 +171,7 @@ prompts:
       user: |
         Project ID: {{ project_id }}
         Pipeline: {{ pipeline_id }}
-        Проблеми: {{ problems }}
+        Problems: {{ problems }}
         Issue: {{ issue_iid }}
       placeholder: history
     params:
@@ -191,7 +191,7 @@ prompts:
         Project ID: {{ project_id }}
         Pipeline: {{ pipeline_id }}
         Issue: {{ issue_iid }}
-        Одит: verdict={{ verdict }}, маскирани={{ scrubbed }}, тайни={{ secrets_loaded }}
+        Audit: verdict={{ verdict }}, scrubbed={{ scrubbed }}, secrets={{ secrets_loaded }}
       placeholder: history
     params:
       timeout: 180

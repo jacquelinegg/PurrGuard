@@ -1,16 +1,16 @@
-ТЕСТОВИ ФАЙЛОВЕ ЗА PURRGUARD (всички ключове са ФАЛШИВИ)
+DEMO FILES FOR PURRGUARD (all keys are FAKE)
 
-Чисти: 01, 05, 07, 09, 11        Заразени: 02, 03, 04, 06, 08, 10, 12
+Clean: 01, 05, 07, 09, 11        Infected: 02, 03, 04, 06, 08, 10, 12
 
-01 vs 02  PNG със скрит текст в най-малко значимите битове. Най-голямата разлика в пиксел е 1 от 255,
-          т.е. окото не вижда нищо. Хваща се само със статистика.
-03        PNG с данни, залепени след края на файла (изглежда нормално във всеки преглед на снимки).
-04        PNG със скрит текст в служебен чънк.
-05 vs 06  JPEG със залепени данни след края.
-07 vs 08  PDF: заразеният има данни след %%EOF, вграден файл и скрипт при отваряне.
-09 vs 10  SQL: заразеният изглежда еднакво, но съдържа стотици невидими Unicode символи.
-11 vs 12  WAV: заразеният има нестандартен чънк с данни.
+01 vs 02  PNG with hidden text in the least significant bits. The biggest pixel difference is 1 out of 255,
+          i.e. the eye sees nothing. Caught only by statistics.
+03        PNG with data appended after the end of the file (looks normal in any image viewer).
+04        PNG with hidden text in a utility chunk.
+05 vs 06  JPEG with data appended after the end.
+07 vs 08  PDF: the infected one has data after %%EOF, an embedded file, and a script on open.
+09 vs 10  SQL: the infected one looks the same but contains hundreds of invisible Unicode characters.
+11 vs 12  WAV: the infected one has a non-standard chunk with data.
 
-Как да докажеш на журито, че файлът наистина е дефектен:
-  python main.py explain demo_files/*     # какво точно е открито, къде, и как да го провериш със strings/xxd/grep
-Сравни чистия и заразения файл: същият вид, различен размер или структура.
+How to prove to the jury that the file is really defective:
+  python main.py explain demo_files/*     # exactly what was found, where, and how to verify it with strings/xxd/grep
+Compare the clean and infected file: same look, different size or structure.

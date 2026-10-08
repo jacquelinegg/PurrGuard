@@ -27,7 +27,7 @@ def expiring(manifest_path=vault.MANIFEST, within_days=7, now=None):
 
 
 def changed_files(base):
-    r = subprocess.run(["git", "diff", "--name-only", base, "HEAD"], capture_output=True, text=True)
+    r = subprocess.run(["git", "diff", "--name-only", base, "HEAD"], capture_output=True, text=True, encoding="utf-8")
     if r.returncode != 0:
         raise vault.VaultError("git diff failed: " + r.stderr.strip())
     return [f for f in r.stdout.split("\n") if f]

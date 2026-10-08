@@ -1,5 +1,5 @@
 # Flow 1 - SUPERVISED: one human approval gate. Triggered by mention/assign on MR.
-# Създава се в проекта: AI > Flows > New flow > Configuration (постави съдържанието). Задействане: mention/assign на MR.
+# Created in the project: AI > Flows > New flow > Configuration (paste the contents). Trigger: mention/assign on the MR.
 name: "Stego-Ops MR Guardian"
 description: "Scans MR for hidden exfiltration and tampered carriers, proposes cleanup and rotation, acts after one approval."
 version: "v1"
@@ -36,10 +36,10 @@ components:
     sends_response_to: "remediation_planner"
     interaction_type: "approval"
     message_template: |
-      PurrGuard откри заплаха. Агентът предлага изчистване на засегнатите файлове и план за ротация.
-      - Approve: изчисти файловете в нов fix MR и публикувай плана
-      - Modify: напиши какво да се промени
-      - Reject: само публикувай доклад, без промени
+      PurrGuard found a threat. The agent proposes cleaning the affected files and a rotation plan.
+      - Approve: clean the files in a new fix MR and publish the plan
+      - Modify: write what to change
+      - Reject: publish the report only, without changes
     ui_log_events: ["on_user_input_prompt", "on_user_response"]
 
   - name: "executor"
@@ -150,8 +150,8 @@ prompts:
         Return short numbered plan when ready.
       user: |
         Project ID: {{ project_id }}
-        Резюме: {{ summary }}
-        Засегнати файлове: {{ files }}
+        Summary: {{ summary }}
+        Affected files: {{ files }}
       placeholder: history
     params:
       timeout: 240
@@ -168,9 +168,9 @@ prompts:
         Do not merge. Do not mention secret values. Return fix MR link when done.
       user: |
         Project ID: {{ project_id }}
-        Оригинален MR: {{ mr_link }}
-        Одобрен план: {{ plan }}
-        Файлове: {{ files }}
+        Original MR: {{ mr_link }}
+        Approved plan: {{ plan }}
+        Files: {{ files }}
       placeholder: history
     params:
       timeout: 300
@@ -186,8 +186,8 @@ prompts:
       user: |
         Project ID: {{ project_id }}
         Merge request: {{ mr_link }}
-        Вердикт: {{ verdict }}
-        Резюме: {{ summary }}
+        Verdict: {{ verdict }}
+        Summary: {{ summary }}
       placeholder: history
     params:
       timeout: 180

@@ -1,4 +1,4 @@
-# Промяна на манифеста или носителите = промяна на това, което се счита за доверено. Изисква одобрение.
+# Changing the manifest or carriers = changing what is considered trusted. Requires approval.
 /.stegoops/ @security-owners
 /app/assets/ @security-owners
 /duo/ @security-owners

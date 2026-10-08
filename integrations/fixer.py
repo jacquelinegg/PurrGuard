@@ -1,6 +1,7 @@
 """Automatic fix MR: cleaned files are submitted as a new merge request."""
 import base64
 import os
+from pathlib import Path
 
 import requests
 
@@ -11,10 +12,10 @@ def build_fixes(findings, outdir="purrguard_fixed"):
     fixed = {}
     for path in sorted({f["file"] for f in findings if f["analyzer"] != "error" and not f["analyzer"].startswith("carrier")}):
         data = sanitize(path)
-        if data is not None and data != open(path, "rb").read():
+        if data is not None and data != Path(path).read_bytes():
             fixed[path] = data
             os.makedirs(os.path.join(outdir, os.path.dirname(path)), exist_ok=True)
-            open(os.path.join(outdir, path), "wb").write(data)
+            Path(os.path.join(outdir, path)).write_bytes(data)
     return fixed
 
 

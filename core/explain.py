@@ -63,7 +63,7 @@ def explain(path, cfg=None):
     lines = [f"File: {path} ({len(data)} B)", f"SHA-256: {hashlib.sha256(data).hexdigest()[:16]}…"]
     findings = scan_file(path, cfg)
     if not findings:
-        return "\n".join(lines + ["Result: no findings ✅"])
+        return "\n".join(lines + ["Result: no findings [OK]"])
     for f in findings:
         lines += [f"\n[{f['severity']}] {f['analyzer']}: {f['detail']}"] + ["  evidence: " + e for e in _evidence(path, data, f)]
     ext = path[path.rfind("."):].lower() if "." in path else ""

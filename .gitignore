@@ -9,6 +9,7 @@ history_results.json
 public/
 
 # Local test artifacts
+purrguard_fixed/
 .env.backup
 .purrguard_honey.json
 .purrguard_log/

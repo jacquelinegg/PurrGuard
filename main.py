@@ -2,6 +2,8 @@
 import hashlib
 import sys
 
+sys.stdout.reconfigure(encoding="utf-8")
+
 from agent.agent import analyze
 from core.engine import load_config, run
 from integrations import fixer, gcp_logging, gitlab_client as gl, notify, rotation
@@ -15,7 +17,7 @@ def cmd_scan(cfg):
         print(f"Stego-Ops: {len(results['authorized_carriers'])} authorized carrier(s) (hash matches manifest): {', '.join(results['authorized_carriers'])}")
     gcp_logging.log_findings(results["findings"])
     if not results["threat_detected"]:
-        print("OK: no threats above threshold. 😺")
+        print("OK: no threats above threshold.")
         return 0
     playbook = rotation.playbook(results["findings"])
     audit, plan = analyze(results, playbook)
@@ -23,9 +25,9 @@ def cmd_scan(cfg):
     if cfg.get("auto_fix", True):
         fixed = fixer.build_fixes(results["findings"])
         fix_url = fixer.open_fix_mr(fixed, "Automatic cleanup by PurrGuard. Review changes before merging.")
-    body = f"## 🐾 PurrGuard: the cat sniffed out a threat ({results['max_severity']})\n\n{audit}\n\n### Recommended actions\n{plan}"
+    body = f"## PurrGuard: threat detected ({results['max_severity']})\n\n{audit}\n\n### Recommended actions\n{plan}"
     if fix_url:
-        body += f"\n\n🔧 Automatic fix prepared: {fix_url}"
+        body += f"\n\nAutomatic fix prepared: {fix_url}"
     body += "\n\n_False alarm? Add the file's SHA-256 to `allowlist_sha256` (`python main.py allow <file>`)._"
     print(body)
     gl.post_mr_comment(body)

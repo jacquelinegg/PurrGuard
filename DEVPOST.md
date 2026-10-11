@@ -39,4 +39,6 @@ Steganography is fragile (recompression breaks it) and is not the security bound
 ## What's next
 Signed manifests, Workload Identity Federation instead of a service-account key, per-environment KEKs.
 
-> Fill in before submitting: repo URL, pipeline history, YouTube demo link, Cloud Run URL.
+> Repo: https://gitlab.com/gitlab-ai-hackathon/transcend-october-2026/43043338/showcase
+> Dashboard (Pages): https://gitlab-ai-hackathon.gitlab.io/transcend-october-2026/43043338/showcase/
+> Still to fill in: YouTube demo link, Cloud Run URL, pipeline history.

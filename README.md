@@ -14,6 +14,11 @@ Two halves of one product for the agent era:
 > It does not replace Secret Manager/OIDC. With the `gcp-kms` provider the KEK never leaves Google Cloud KMS.
 > Public repo ⇒ ciphertext is public. That's why the KEK is in a masked+protected CI variable (or KMS), and the bundle has a TTL and rotates.
 
+## Links
+- **Showcase repository (hackathon):** https://gitlab.com/gitlab-ai-hackathon/transcend-october-2026/43043338/showcase
+- **Live dashboard (GitLab Pages):** https://gitlab-ai-hackathon.gitlab.io/transcend-october-2026/43043338/showcase/
+- **Mirror:** https://github.com/jacquelinegg/PurrGuard
+
 ## Architecture
 ```mermaid
 flowchart LR
@@ -90,6 +95,9 @@ New/tampered manifest in MR → MEDIUM review. The fixer never "cleans" an autho
 - Steganography is fragile: PNG recompression/resizing (CDN, optimizers) destroys it. The correct file is protected by the SHA-256 pin.
 - In the flow environment, the scan covers all tracked files (no `CI_MERGE_REQUEST_DIFF_BASE_SHA`); the full MR mode is in the CI job `purrguard-mr`.
 - All demo secrets are **FAKE**.
+
+## Demo files (intentionally infected)
+`demo_files/` contains **deliberately infected samples** (LSB, trailing bytes, text chunks, PDF embedded files, invisible Unicode, WAV chunk) used to test and demonstrate the scanner. They are test fixtures, not real secrets — all values are FAKE. Do not "clean" them; they are the proof the scanner works.
 
 ## PurrGuard (the original scanner)
 ```bash

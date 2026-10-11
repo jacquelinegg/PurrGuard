@@ -35,7 +35,7 @@ The result is a modified `app/assets/logo.png` and `.stegoops/manifest.json`: **
 ### First push
 ```bash
 git init -b main && git add -A && git commit -m "PurrGuard + Stego-Ops"
-git remote add origin https://gitlab.com/<user>/purrguard-stegoops.git
+git remote add origin https://gitlab.com/gitlab-ai-hackathon/transcend-october-2026/43043338/showcase.git
 git push -u origin main
 ```
 Expected: `tests`, `stegoops-verify` → `build-app` → `deploy-staging` (in logs: `canary (should be ***): ***`; artifact `leak_audit.json`, verdict `clean`).

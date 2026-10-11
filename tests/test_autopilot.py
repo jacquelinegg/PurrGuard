@@ -159,17 +159,23 @@ for f in ("stegoops-deploy-sentinel", "stegoops-mr-guardian"):
     d = yaml.safe_load(open(f"{ROOT}/duo/flows/{f}.yaml", encoding="utf-8"))
     comps = {c["name"]: c for c in d["components"]}
     prompts = {p["prompt_id"] for p in d["prompts"]}
-    schemas = {s["schema_id"]: set(s["definition"]["properties"]) for s in d["response_schemas"]}
     bad = []
+    # custom-flow schema: top-level name/description/response_schemas and
+    # component response_schema_id are rejected by the GitLab Flow builder
+    assert "response_schemas" not in d and "name" not in d and "description" not in d, f
     for c in comps.values():
+        assert "response_schema_id" not in c, c["name"]
         if c["type"] == "AgentComponent" and c["prompt_id"] not in prompts:
             bad.append(("prompt", c["name"]))
         for i in c.get("inputs", []):
             ref = i["from"].split(":", 1)[1]
-            if ref.count(".") == 2:  # component.final_answer.field
-                comp, _, fld = ref.split(".")
-                if comp not in comps or fld not in schemas.get(comps[comp].get("response_schema_id"), set()):
-                    bad.append(("input", ref))
+            parts = ref.split(".")
+            if parts[0] in ("goal", "project_id", "inputs"):
+                continue
+            if parts[0] not in comps:
+                bad.append(("input", ref))
+            elif len(parts) > 2 or parts[1] not in ("final_answer", "approval"):
+                bad.append(("input", ref))  # final answers are plain strings now
     for r in d["routers"]:
         targets = [r["to"]] if "to" in r else list(r["condition"]["routes"].values())
         bad += [("route", t) for t in targets if t != "end" and t not in comps]

@@ -1,7 +1,9 @@
 # Flow 1 - SUPERVISED: one human approval gate. Triggered by mention/assign on MR.
+# Conforms to the GitLab custom-flow schema: no top-level name/description and
+# no response_schemas/response_schema_id (rejected by the Flow builder). The
+# scanner ends with EXACTLY one routing word; other agents re-read the
+# deterministic scan_results.json artifact themselves.
 # Created in the project: AI > Flows > New flow > Configuration (paste the contents). Trigger: mention/assign on the MR.
-name: "Stego-Ops MR Guardian"
-description: "Scans MR for hidden exfiltration and tampered carriers, proposes cleanup and rotation, acts after one approval."
 version: "v1"
 environment: ambient
 
@@ -15,7 +17,6 @@ components:
       - from: "context:project_id"
         as: "project_id"
     toolset: ["get_merge_request", "run_command", "read_file", "list_dir"]
-    response_schema_id: "scan_verdict"
     ui_log_events: ["on_tool_execution_success", "on_tool_execution_failed"]
 
   - name: "remediation_planner"
@@ -24,10 +25,8 @@ components:
     inputs:
       - from: "context:project_id"
         as: "project_id"
-      - from: "context:scanner.final_answer.summary"
-        as: "summary"
-      - from: "context:scanner.final_answer.files"
-        as: "files"
+      - from: "context:scanner.final_answer"
+        as: "verdict"
     toolset: ["read_file", "run_command"]
     ui_log_events: ["on_agent_final_answer", "on_tool_execution_failed"]
 
@@ -35,11 +34,13 @@ components:
     type: HumanInputComponent
     sends_response_to: "remediation_planner"
     interaction_type: "approval"
+    inputs:
+      - from: "context:scanner.final_answer"
+        as: "verdict"
     message_template: |
-      PurrGuard found a threat. The agent proposes cleaning the affected files and a rotation plan.
-      - Approve: clean the files in a new fix MR and publish the plan
-      - Modify: write what to change
-      - Reject: publish the report only, without changes
+      PurrGuard found a threat (verdict: {{ verdict }}). The agent proposes cleaning the affected files and a rotation plan.
+      Approve: clean the files in a new fix MR and publish the plan
+      Reject: publish the report only, without changes
     ui_log_events: ["on_user_input_prompt", "on_user_response"]
 
   - name: "executor"
@@ -52,8 +53,6 @@ components:
         as: "mr_link"
       - from: "context:remediation_planner.final_answer"
         as: "plan"
-      - from: "context:scanner.final_answer.files"
-        as: "files"
     toolset: ["run_command", "create_branch", "create_commit", "create_merge_request", "create_merge_request_note"]
     ui_log_events: ["on_agent_final_answer", "on_tool_execution_failed"]
 
@@ -65,17 +64,15 @@ components:
         as: "project_id"
       - from: "context:goal"
         as: "mr_link"
-      - from: "context:scanner.final_answer.verdict"
+      - from: "context:scanner.final_answer"
         as: "verdict"
-      - from: "context:scanner.final_answer.summary"
-        as: "summary"
     toolset: ["create_merge_request_note"]
     ui_log_events: ["on_agent_final_answer", "on_tool_execution_failed"]
 
 routers:
   - from: "scanner"
     condition:
-      input: "context:scanner.final_answer.verdict"
+      input: "context:scanner.final_answer"
       routes:
         "threat": "remediation_planner"
         "needs_review": "reporter"
@@ -88,7 +85,6 @@ routers:
       input: "context:approval_gate.approval"
       routes:
         "approve": "executor"
-        "modify": "remediation_planner"
         "reject": "reporter"
         "default_route": "reporter"
   - from: "executor"
@@ -99,37 +95,19 @@ routers:
 flow:
   entry_point: "scanner"
 
-response_schemas:
-  - schema_id: "scan_verdict"
-    definition:
-      "$schema": "http://json-schema.org/draft-07/schema#"
-      title: "scan_verdict_response"
-      type: object
-      properties:
-        verdict:
-          type: string
-          enum: ["clean", "needs_review", "threat"]
-          description: "clean = no findings; needs_review = MEDIUM/manifest review; threat = HIGH/CRITICAL"
-        summary:
-          type: string
-          description: "Short finding summary. File names and types only, never secret values."
-        files:
-          type: string
-          description: "Affected files separated by spaces (empty if none)"
-      required: [verdict, summary, files]
-
 prompts:
   - prompt_id: "scanner_prompt"
     name: "Scanner"
     unit_primitives: []
     prompt_template:
       system: |
-        Security agent. Run scanner and classify.
-        1. Get MR source branch. Fetch/checkout if needed.
+        Security agent. Run the scanner and classify.
+        1. Get the MR source branch from the goal. Fetch/checkout if needed.
         2. Run: PURRGUARD_MOCK=1 python main.py ; then: python -m stegoops verify
-        3. Read scan_results.json. Classify: threat for HIGH/CRITICAL; needs_review for carrier_resealed/carrier_manifest changes; else clean.
+        3. Read scan_results.json. Classify: threat for HIGH/CRITICAL; needs_review for
+           carrier_resealed/carrier_manifest changes; else clean.
         Never print or quote secret values. Do not open Stego-Ops carriers (no key - intentional).
-        Return structured verdict when ready.
+        Your final answer must be EXACTLY one word and nothing else: clean, needs_review, or threat.
       user: |
         Project ID: {{ project_id }}
         Merge request: {{ mr_link }}
@@ -142,16 +120,16 @@ prompts:
     unit_primitives: []
     prompt_template:
       system: |
-        Incident response agent. Propose a plan (do not execute):
-        - Files to sanitize: python main.py sanitize <files> (authorized carriers auto-skipped)
-        - Secrets to rotate: from scan_results.json secrets field and README rotation section
-        - Whether STEGOOPS_KEK rotation is needed (only if carrier swapped or manifest compromised)
+        Incident response agent. The verdict is: {{ verdict }}.
+        Read scan_results.json and propose a plan (do not execute):
+        - Files to sanitize: python main.py sanitize <files> (authorized carriers are auto-skipped)
+        - Secrets to rotate: from the secrets field in scan_results.json (names only)
+        - Whether STEGOOPS_KEK rotation is needed (only if a carrier was swapped or the manifest compromised)
         Never quote secret values. Include human feedback if present.
-        Return short numbered plan when ready.
+        Return a short numbered plan.
       user: |
         Project ID: {{ project_id }}
-        Summary: {{ summary }}
-        Affected files: {{ files }}
+        Verdict: {{ verdict }}
       placeholder: history
     params:
       timeout: 240
@@ -161,16 +139,16 @@ prompts:
     unit_primitives: []
     prompt_template:
       system: |
-        Execute approved plan.
-        1. Sanitize affected files.
-        2. Create branch purrguard/fix-<id>, commit cleaned files, open MR to source branch.
-        3. Note original MR with plan and link to fix MR.
-        Do not merge. Do not mention secret values. Return fix MR link when done.
+        Execute the approved plan. The plan is:
+        {{ plan }}
+        1. Sanitize the affected files (python main.py sanitize <files>).
+        2. Create branch purrguard/fix-<id>, commit the cleaned files, open an MR to the source branch.
+        3. Note the original MR with the plan and the fix MR link.
+        Do not merge. Do not mention secret values. Return the fix MR link when done.
       user: |
         Project ID: {{ project_id }}
         Original MR: {{ mr_link }}
-        Approved plan: {{ plan }}
-        Files: {{ files }}
+        Files: from the approved plan
       placeholder: history
     params:
       timeout: 300
@@ -180,14 +158,14 @@ prompts:
     unit_primitives: []
     prompt_template:
       system: |
-        Post short report to MR: verdict, findings (files and types only), next steps.
-        If clean, state no findings. Do not include secret values.
-        Return confirmation when posted.
+        Post a short report to the MR: verdict ({{ verdict }}), findings from scan_results.json
+        (file names and types only), and next steps.
+        If clean, state there are no findings. Do not include secret values.
+        Return a confirmation when posted.
       user: |
         Project ID: {{ project_id }}
         Merge request: {{ mr_link }}
         Verdict: {{ verdict }}
-        Summary: {{ summary }}
       placeholder: history
     params:
       timeout: 180

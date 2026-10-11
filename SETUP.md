@@ -58,7 +58,7 @@ Better production practice: Workload Identity Federation instead of a key (left 
 ## 4. Duo flows
 1. AI > Flows > New flow → upload `duo/flows/stegoops-mr-guardian.yaml`; triggers: **mention** (and optionally assign/reviewer of the flow).
 2. New flow → upload `duo/flows/stegoops-deploy-sentinel.yaml`; triggers: **Pipeline** (should trigger on pipeline events) and **mention**..
-3. The Flow builder validates the YAML. **Small corrections are expected here**: tool names in `toolset` (`create_issue`, `create_issue_note`, `gitlab_api_get`, `get_merge_request`, …) and allowed fields depend on the version. Fix whatever it complains about and return the fix to the repo.
+3. The Flow builder validates the YAML. Both flow YAMLs already conform to the **custom-flow schema** (GitLab 19.2+): no top-level `name`/`description`/`response_schemas`, no `response_schema_id` on components (the builder rejects them), `environment: ambient`, and every routed agent ends with **exactly one word** (`go`/`no_go`/`skip`, `clean`/`needs_review`/`threat`) because custom flows have no structured output - details are re-read from deterministic artifacts (`scan_results.json`, `leak_audit.json`). If the builder still complains about a tool name (`create_issue`, `create_issue_note`, `gitlab_api_get`, `get_merge_request`, …), fix it and return the fix to the repo.
 4. The flow's service account must be a member of the project (Developer) to comment.
 5. MCP: `.gitlab/duo/mcp.json` registers the `purrguard` MCP server. Check in your version where it applies (e.g. Duo Chat in IDE). Mention it in the submission only if you show it in the video.
 

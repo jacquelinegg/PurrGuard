@@ -89,7 +89,7 @@ New/tampered manifest in MR → MEDIUM review. The fixer never "cleans" an autho
 - **Decoy carriers:** `stegoops decoy` places a registered honeytoken with ordinary sequential LSB; if someone "decodes" it and the value appears elsewhere - CRITICAL without false alarm.
 
 ## Honest limitations
-- **Not tested** against real GitLab, Container Registry, Duo Agent Platform, Cloud KMS, and Cloud Run. The registry client is tested with a fake registry, and rotation (issue/branch/commit/MR/auto-merge) is tested with a fake GitLab API; flow YAMLs are checked for structure and references, but not run in Duo (tool names and triggers must be confirmed in your instance/version - the flow builder validates).
+- **Not tested** against real GitLab, Container Registry, Duo Agent Platform, Cloud KMS, and Cloud Run. The registry client is tested with a fake registry, and rotation (issue/branch/commit/MR/auto-merge) is tested with a fake GitLab API; flow YAMLs are checked for structure, references, and custom-flow schema conformance (no `response_schemas`/`response_schema_id`, single-word routing answers), but not run in Duo (tool names and triggers must be confirmed in your instance/version - the flow builder validates).
 - The child process may write a secret to a file or transfer it to another encoding; the scrubber covers raw/base64/hex/URL/JSON forms and PEM lines, not everything. `leak_audit.json` accounts for residual patterns.
 - Whoever can push code to the deploy job can take the secrets (as with any CI secret). Protections: protected branch, environment scoping, CODEOWNERS, KMS.
 - Steganography is fragile: PNG recompression/resizing (CDN, optimizers) destroys it. The correct file is protected by the SHA-256 pin.

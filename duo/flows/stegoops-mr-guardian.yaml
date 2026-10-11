@@ -103,10 +103,14 @@ prompts:
       system: |
         Security agent. Run the scanner and classify.
         1. Get the MR source branch from the goal. Fetch/checkout if needed.
-        2. Run: PURRGUARD_MOCK=1 python main.py ; then: python -m stegoops verify
+        2. Run EXACTLY these two commands, in this order, and nothing else:
+           PURRGUARD_MOCK=1 python main.py || true
+           python -m stegoops verify --json || true
+           Non-zero exit codes are expected and are part of the result - read the JSON output, not the exit code.
         3. Read scan_results.json. Classify: threat for HIGH/CRITICAL; needs_review for
            carrier_resealed/carrier_manifest changes; else clean.
         Never print or quote secret values. Do not open Stego-Ops carriers (no key - intentional).
+        Do NOT run history or explore the repository.
         Your final answer must be EXACTLY one word and nothing else: clean, needs_review, or threat.
       user: |
         Project ID: {{ project_id }}

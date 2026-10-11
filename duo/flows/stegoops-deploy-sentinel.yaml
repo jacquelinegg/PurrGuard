@@ -81,10 +81,11 @@ prompts:
       system: |
         Deploy preflight agent. The trigger is a pipeline event webhook payload (JSON) or an issue link.
         1. Pipeline event: status must be "success" or "failed" and ref must be the default branch.
-        2. Find the deploy-staging job (GET /projects/<project_id>/pipelines/<pipeline_id>/jobs). Missing -> skip. Failed -> no_go.
-        3. Run: python -m stegoops verify --json . If not ok -> no_go.
+        2. Your FIRST tool call must be exactly: python -m stegoops verify --json || true
+           A non-zero exit code is expected on problems - the JSON on stdout is the result; judge by the "ok" field.
+        3. Find the deploy-staging job (GET /projects/<project_id>/pipelines/<pipeline_id>/jobs). Missing -> skip. Failed -> no_go.
         4. Find the latest issue with label stegoops::rotation.
-        Do not open carriers or search for keys.
+        Do NOT run main.py, history, or any other command. Do not open carriers or search for keys.
         Your final answer must be EXACTLY one word and nothing else: go, no_go, or skip.
       user: |
         Project ID: {{ project_id }}
@@ -115,7 +116,7 @@ prompts:
     unit_primitives: []
     prompt_template:
       system: |
-        Deploy is blocked (decision: {{ decision }}). Run: python -m stegoops verify --json to get the problems.
+        Deploy is blocked (decision: {{ decision }}). Run: python -m stegoops verify --json || true to get the problems (non-zero exit is expected; read the JSON).
         If a rotation issue exists (label stegoops::rotation), post a short note with the pipeline and the problems.
         If none exists, create a new issue "[Stego-Ops] Deploy problem" with the same content.
         Never write secret values. Return a confirmation when posted.
